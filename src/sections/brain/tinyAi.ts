@@ -35,7 +35,7 @@ export const ITEMS: Item[] = [
   { id: 'hackathon', name: 'Weekend hackathon', emoji: '🚀', hours: 8, outdoor: false, f: { adventure: 0.6, energy: 0.6, brainy: 0.95, social: 0.8 } },
   { id: 'snowshoe', name: 'Snowshoe trek', emoji: '❄️', hours: 5, outdoor: true, snowFriendly: true, f: { adventure: 0.9, energy: 0.8, brainy: 0.05, social: 0.5 } },
   { id: 'cozy', name: 'Movie, face mask & snacks', emoji: '🎬', hours: 2, outdoor: false, f: { adventure: 0, energy: 0, brainy: 0.1, social: 0.3 } },
-  { id: 'picnic', name: 'Park picnic & people-watching', emoji: '🧺', hours: 3, outdoor: true, f: { adventure: 0.35, energy: 0.25, brainy: 0.2, social: 0.85 } },
+  { id: 'solo-hike', name: 'All-day solo hike (8–9 hrs)', emoji: '🥾', hours: 9, outdoor: true, f: { adventure: 1, energy: 0.95, brainy: 0.2, social: 0 } },
 ]
 
 export type Context = { weather: Weather; hours: number }
