@@ -57,7 +57,7 @@ export const photos = {
 export const brain = {
   intro:
     'I turn messy data into decisions. My favourite problems sit where statistics, product intuition and a healthy amount of curiosity meet.',
-  role: 'Senior Data Scientist at [Company name]', // ✎
+  role: 'Senior Data Scientist',
   focusAreas: [
     { title: 'Machine Learning', blurb: 'Models that earn their place in production — interpretable when it matters, ambitious when it counts.', emoji: '🤖' },
     { title: 'Experimentation & A/B Testing', blurb: 'Designing tests that answer the real question, and having the patience to read them honestly.', emoji: '🧪' },
@@ -246,10 +246,10 @@ export const about = {
   notOnResume: [
     { emoji: '🐱', title: 'My pets have their own Instagram', body: 'Meet my cat & dog over at @xiangx.jingx. They have more fans than I do.' },
     { emoji: '🏂', title: 'Multi-sport menace', body: 'Boxing, gymnastics, snowboarding, running, lifting. Find my runs on Strava.' },
-    { emoji: '🎧', title: '[Gym anthem]', body: '[The song that guarantees a PR.]' },
-    { emoji: '📍', title: '[Next place on the map]', body: '[Where you are dreaming of going next, and why.]' },
-    { emoji: '🧋', title: '[Order of choice]', body: '[Coffee? Matcha? Bubble tea with extra pearls?]' },
-    { emoji: '📖', title: '[Book that rewired you]', body: '[A book or idea you keep coming back to.]' },
+    { emoji: '🎧', title: 'Gym anthem: Stronger by Kanye West', body: "Work it, make it, do it, makes us harder, better, faster… stronger. Guaranteed PR.", youtubeId: 'PsO6ZnUZI0g' },
+    { emoji: '📍', title: 'Next place on the map', body: 'Somewhere warm~ ☀️ Sunshine, ocean, zero snow shovels. Suggestions welcome.' },
+    { emoji: '☕', title: 'My order', body: 'Decaf latte with oat milk. All the cozy, none of the 3am thoughts.' },
+    { emoji: '📖', title: 'The book that rewired me', body: 'The Courage to Be Disliked. Turns out freedom starts with not needing everyone to like you.' },
   ],
   /** Shown by the hidden “Plot Twist” button. */
   funFacts: [
