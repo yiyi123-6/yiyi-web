@@ -1,0 +1,90 @@
+# Weekly: pull recent hikes from Garmin Connect, merge them into src/data/hikes.json,
+# commit to main and redeploy. Uses the UNOFFICIAL garminconnect library (see README).
+# Does nothing until GARMIN_TOKENS (or GARMIN_EMAIL + GARMIN_PASSWORD) repo secrets exist.
+name: Sync hikes from Garmin
+
+on:
+  schedule:
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+  workflow_dispatch:
+    inputs:
+      days:
+        description: How many days back to look
+        default: '45'
+
+permissions:
+  contents: write
+  actions: write
+
+concurrency:
+  group: garmin-sync
+  cancel-in-progress: false
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check for Garmin secrets
+        id: check
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          if [ -n "$GARMIN_TOKENS" ] || { [ -n "$GARMIN_EMAIL" ] && [ -n "$GARMIN_PASSWORD" ]; }; then
+            echo "enabled=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "::notice::Garmin sync skipped: add GARMIN_TOKENS (or GARMIN_EMAIL + GARMIN_PASSWORD) in Settings > Secrets and variables > Actions."
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+          fi
+
+      - uses: actions/checkout@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          ref: main
+
+      - uses: actions/setup-python@v5
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          python-version: '3.12'
+
+      - uses: actions/setup-node@v4
+        if: steps.check.outputs.enabled == 'true'
+        with:
+          node-version: 22
+
+      - name: Download hikes from Garmin Connect
+        if: steps.check.outputs.enabled == 'true'
+        env:
+          GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
+          GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
+          GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+        run: |
+          pip install --quiet garminconnect==0.3.20
+          python scripts/garmin_sync.py --days "${{ inputs.days || '45' }}" --out "$RUNNER_TEMP/garmin"
+
+      - name: Merge into hikes.json
+        if: steps.check.outputs.enabled == 'true'
+        run: node scripts/import-garmin.mjs "$RUNNER_TEMP/garmin"
+
+      - name: Commit and push
+        id: commit
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          git add src/data/hikes.json
+          if git diff --cached --quiet; then
+            echo "No new hikes."
+            exit 0
+          fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -m "Sync hikes from Garmin Connect"
+          git push origin HEAD:main
+          echo "changed=true" >> "$GITHUB_OUTPUT"
+
+      # Pushes made with GITHUB_TOKEN don't trigger other workflows, so start the deploy explicitly.
+      - name: Redeploy site
+        if: steps.commit.outputs.changed == 'true'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run deploy.yml --ref main

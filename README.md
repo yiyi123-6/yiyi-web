@@ -32,7 +32,10 @@ Built with React 18, Vite, TypeScript, Tailwind CSS v4 and Motion. It's a fully 
 │       ├── gym/                # The Gym + "Beat my reps" game
 │       ├── mountains/          # The Mountains journal + map
 │       └── founder/            # The Founder scrapbook
-└── .github/workflows/deploy.yml  # Auto-deploy to GitHub Pages
+├── scripts/garmin_sync.py      # Fetches recent hikes from Garmin Connect (weekly sync)
+└── .github/workflows/
+    ├── deploy.yml              # Auto-deploy to GitHub Pages
+    └── garmin-sync.yml         # Weekly Garmin → hikes.json sync + redeploy
 ```
 
 ## Run it locally
@@ -97,3 +100,37 @@ Create (or rename) a repo called exactly `<username>.github.io` and push this co
 To build manually for a sub-path: `VITE_BASE=/my-repo/ npm run build`.
 
 You can re-run a deploy any time from the **Actions** tab ("Deploy to GitHub Pages" → *Run workflow*).
+
+## Garmin auto-sync (weekly)
+
+`.github/workflows/garmin-sync.yml` runs every Monday at 06:00 UTC. It logs in to Garmin Connect, fetches your hiking, walking and mountaineering activities from the last 14 days (with GPX tracks for real elevation profiles), and merges them into `src/data/hikes.json`. If anything changed, it builds the site, commits the update to `main` and redeploys GitHub Pages. If nothing changed, it does nothing.
+
+The merge never touches what you wrote by hand. Names, locations, photos, experience, takeaway and a difficulty you set yourself are kept. Only Garmin's numbers are refreshed: date, distance, elevation, times and the elevation profile. New hikes are added with `[placeholder]` text and an empty photo for you to fill in. A Garmin activity is linked to an existing hike by its Garmin ID, or, the first time, by a matching name on a hike whose date is still a placeholder (e.g. "Niagara Falls Hiking" → "Niagara Falls").
+
+### One-time setup
+
+1. In your repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
+   - `GARMIN_EMAIL`: the email you use to sign in to Garmin Connect
+   - `GARMIN_PASSWORD`: your Garmin Connect password
+2. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
+3. The workflow file must be on `main`. GitHub only runs scheduled workflows from the default branch.
+
+### Run it manually
+
+**Actions** tab → **Garmin weekly sync** → **Run workflow**. You can change how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. If you have the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=60`.
+
+To do the same thing on your own computer:
+
+```bash
+pip install "garminconnect>=0.3,<0.4"
+GARMIN_EMAIL=you@example.com GARMIN_PASSWORD='…' python scripts/garmin_sync.py --out garmin-export --days 30
+node scripts/import-garmin.mjs garmin-export --dry-run   # preview, then run again without --dry-run
+```
+
+### Caveats
+
+- **Unofficial connection.** Garmin has no public API for personal accounts, so this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. Garmin can change its login, add a captcha or block GitHub's servers at any time, and the sync will then stop working until the library catches up. When it fails, the run turns red with a plain-English reason at the top of the run page, and nothing is committed or deployed. Your site keeps working, it just doesn't get new hikes. You can always fall back to exporting files by hand and running `npm run import:garmin`.
+- **Two-step verification (MFA) must be off or handled.** A scheduled run can't type the code Garmin sends you, so with MFA on, the login fails with "Garmin asked for an MFA code". Either turn MFA off for your Garmin account, or handle it with saved login tokens:
+  1. On your own computer, run `GARMIN_EMAIL=… GARMIN_PASSWORD='…' python scripts/garmin_sync.py --save-tokens` and enter the MFA code when asked.
+  2. Copy the JSON it prints into a third repo secret named `GARMIN_TOKENS`. The workflow uses it instead of a fresh password login. When the tokens eventually expire (the log will say login failed), run step 1 again.
+- Your password is stored only as an encrypted GitHub secret and is never printed in logs. Garmin may email you about a "new sign-in" the first few times the workflow runs.
