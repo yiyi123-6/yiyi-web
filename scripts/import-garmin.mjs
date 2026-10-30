@@ -18,10 +18,17 @@
  *   --imperial       CSV distances are in miles and ascent/elevation in feet
  *   --all-types      don't filter to hiking / walking / trail running
  *   --since <date>   ignore activities before YYYY-MM-DD
- *   --min-km <n>     ignore activities shorter than n km (e.g. watch restarts mid-hike)
+ *   --min-km <n>     ignore activities shorter than n km. Shorter pieces that share a name and
+ *                    day with a longer one (watch restarted mid-hike) are merged into it instead.
+ *   --with-dates     also write the date, start time and start GPS point of each hike.
+ *                    Off by default: hikes.json is public, so it only gets stats and the profile.
+ *   --private        the default; accepted so scripts can say it explicitly
+ *
+ * Same-name activities on the same day are merged into one hike when one of them is under
+ * --min-km or the second starts within 10 minutes of the first ending.
  *
  * Hand-written fields (name, location, photos, experience, takeaway, difficulty) are never
- * overwritten. Stats, date and elevation profile are refreshed from Garmin.
+ * overwritten. Stats and elevation profile are refreshed from Garmin.
  */
 import fs from 'node:fs'
 import path from 'node:path'
@@ -35,7 +42,7 @@ const PROFILE_POINTS = 60
 // ---------------------------------------------------------------- args
 
 function parseArgs(argv) {
-  const opts = { data: 'src/data/hikes.json', out: null, dryRun: false, as: null, imperial: false, allTypes: false, since: null, inputs: [] }
+  const opts = { data: 'src/data/hikes.json', out: null, dryRun: false, as: null, imperial: false, allTypes: false, since: null, withDates: false, inputs: [] }
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i]
     if (a === '--data') opts.data = argv[++i]
@@ -46,6 +53,8 @@ function parseArgs(argv) {
     else if (a === '--all-types') opts.allTypes = true
     else if (a === '--since') opts.since = argv[++i]
     else if (a === '--min-km') opts.minKm = Number(argv[++i])
+    else if (a === '--with-dates') opts.withDates = true
+    else if (a === '--private' || a === '--no-dates') opts.withDates = false
     else if (a === '-h' || a === '--help') opts.help = true
     else if (a.startsWith('--')) throw new Error(`Unknown option ${a}`)
     else opts.inputs.push(a)
@@ -411,40 +420,135 @@ function combine(records) {
   })
 }
 
+const RESTART_GAP_MIN = 10
+const dayOf = (r) => r.startLocal?.slice(0, 10)
+const endOf = (r) => timeOf(r) + (r.elapsedSec ?? r.movingSec ?? 0) * 1000
+const sameName = (a, b) => a.name.trim().toLowerCase() === b.name.trim().toLowerCase()
+
+/**
+ * One outing recorded as several activities (watch restarted, or a short add-on with the same
+ * auto-generated name) → one record. Separate same-day hikes of real length stay separate.
+ */
+export function groupOutings(records, minKm = 0) {
+  const isFragment = (r) => (r.distanceKm ?? 0) < minKm
+  const groups = []
+  for (const r of [...records].sort((a, b) => timeOf(a) - timeOf(b))) {
+    const g = groups.findLast((g) => {
+      const last = g[g.length - 1]
+      if (!dayOf(r) || dayOf(r) !== dayOf(last) || !sameName(r, last)) return false
+      return isFragment(r) || g.some(isFragment) || (timeOf(r) - endOf(last)) / 60e3 <= RESTART_GAP_MIN
+    })
+    g ? g.push(r) : groups.push([r])
+  }
+  return groups.map(joinSegments)
+}
+
+function joinProfiles(segs) {
+  const pts = []
+  let offset = 0
+  for (const s of segs) {
+    if (!(s.profile?.length > 1) || !(s.distanceKm > 0)) continue
+    const n = s.profile.length
+    s.profile.forEach((ele, i) => pts.push({ dist: offset + (s.distanceKm * i) / (n - 1), ele }))
+    offset += s.distanceKm
+  }
+  return pts.length > 1 ? resampleProfile(pts, pts.map((p) => p.ele)) : undefined
+}
+
+function joinSegments(segs) {
+  if (segs.length === 1) return segs[0]
+  const main = segs.reduce((a, b) => ((b.distanceKm ?? 0) > (a.distanceKm ?? 0) ? b : a))
+  const sum = (k) => (segs.every((s) => s[k] == null) ? undefined : segs.reduce((acc, s) => acc + (s[k] ?? 0), 0))
+  const highs = segs.map((s) => s.maxElevationM).filter(Number.isFinite)
+  return {
+    ...main,
+    activityIds: segs.map((s) => s.activityId).filter(Boolean),
+    startLocal: segs[0].startLocal,
+    startUtc: segs[0].startUtc,
+    start: segs[0].start,
+    distanceKm: sum('distanceKm'),
+    elevationGainM: sum('elevationGainM'),
+    movingSec: sum('movingSec'),
+    elapsedSec: sum('elapsedSec'),
+    maxElevationM: highs.length ? Math.max(...highs) : undefined,
+    profile: joinProfiles(segs),
+    files: segs.flatMap((s) => s.files ?? [s.file]),
+    segments: segs,
+  }
+}
+
 const isPlaceholder = (v) => v == null || v === '' || (typeof v === 'string' && /^\[.*\]$/.test(v.trim()))
+
+const DATE_FIELDS = ['date', 'startTime', 'start']
+const linkedIds = (h) => (h.garminActivityIds ?? (h.garminActivityId != null ? [h.garminActivityId] : [])).map(String)
+const idsOf = (rec) => rec.activityIds ?? (rec.activityId ? [rec.activityId] : [])
 
 function findExisting(hikes, rec, slugId, opts) {
   if (opts.as) return hikes.find((h) => h.id === opts.as) ?? null
-  if (rec.activityId) {
-    const byGarmin = hikes.find((h) => String(h.garminActivityId ?? '') === rec.activityId)
+  const ids = idsOf(rec)
+  if (ids.length) {
+    const byGarmin = hikes.find((h) => linkedIds(h).some((id) => ids.includes(id)))
     if (byGarmin) return byGarmin
   }
-  const byId = hikes.find((h) => h.id === slugId && (!h.garminActivityId || !rec.activityId))
+  const byId = hikes.find((h) => h.id === slugId && (!linkedIds(h).length || !ids.length))
   if (byId) return byId
   // "Niagara Falls Hiking" → existing "Niagara Falls" hike that hasn't been linked to Garmin yet.
   const title = ` ${slugify(rec.name).replace(/-/g, ' ')} `
   return (
     hikes.find((h) => {
-      if (h.garminActivityId || !isPlaceholder(h.date)) return false
+      if (linkedIds(h).length || !isPlaceholder(h.date)) return false
       const words = slugify(h.name).split('-').filter((w) => w.length > 2)
       return words.length > 0 && words.every((w) => title.includes(` ${w} `))
     }) ?? null
   )
 }
 
-function statsFor(rec, units) {
+const ACTIVITY_SUFFIX = /\s+(hiking|hike|walking|walk|mountaineering|trail running|trail run|trek|trekking)$/i
+
+/** "chapel trail" → "Chapel Trail", "Yavapai County Hiking" (Garmin's auto-name) → "Yavapai County Trails". */
+export function niceName(raw, locationName) {
+  const stripped = String(raw ?? '').trim().replace(ACTIVITY_SUFFIX, '').trim()
+  let name = stripped || locationName || 'Untitled'
+  if (name === name.toLowerCase()) name = name.replace(/(^|[\s-])(\p{L})/gu, (_, sep, c) => sep + c.toUpperCase())
+  const auto = !stripped || (locationName && stripped.toLowerCase() === String(locationName).toLowerCase())
+  return auto ? `${name.split(',')[0].trim()} Trails` : name
+}
+
+/** Reuse the full "Town, Province, Country" already written on another hike when Garmin only knows "Town". */
+function placeFor(locationName, hikes) {
+  if (!locationName) return '[Where was this?]'
+  const prefix = `${locationName.toLowerCase()},`
+  return hikes.find((h) => typeof h.location === 'string' && h.location.toLowerCase().startsWith(prefix))?.location ?? locationName
+}
+
+const TAKEAWAYS = {
+  Easy: 'Every trail counts.',
+  Moderate: 'Steady steps add up.',
+  Hard: 'The view is better after the climb.',
+  Epic: 'Legs: tired. Data: excellent.',
+}
+
+function factLine(stats, units) {
+  const parts = [`${stats.distance.toLocaleString('en-US')} ${units.distance}`]
+  if (stats.elevationGain != null) parts.push(`${stats.elevationGain.toLocaleString('en-US')} ${units.elevation} of climbing`)
+  return `${parts.join(' and ')}.`
+}
+
+function statsFor(rec, units, opts = {}) {
   const imperial = units?.distance === 'mi'
+  const ids = idsOf(rec)
   const s = {
     distance: round(imperial ? rec.distanceKm / 1.609344 : rec.distanceKm, 1),
     elevationGain: round(imperial ? rec.elevationGainM / 0.3048 : rec.elevationGainM),
     maxElevation: round(imperial ? rec.maxElevationM / 0.3048 : rec.maxElevationM),
-    date: rec.startLocal ? displayDate(rec.startLocal) : undefined,
-    startTime: rec.startLocal,
+    date: opts.withDates && rec.startLocal ? displayDate(rec.startLocal) : undefined,
+    startTime: opts.withDates ? rec.startLocal : undefined,
     movingTime: rec.movingSec,
     elapsedTime: rec.elapsedSec,
-    start: rec.start,
+    start: opts.withDates ? rec.start : undefined,
     profile: rec.profile && imperial ? rec.profile.map((e) => Math.round(e / 0.3048)) : rec.profile,
     garminActivityId: rec.activityId,
+    garminActivityIds: ids.length > 1 ? ids : undefined,
     source: 'garmin',
   }
   for (const k of Object.keys(s)) if (s[k] === undefined) delete s[k]
@@ -453,31 +557,51 @@ function statsFor(rec, units) {
 
 export function mergeHikes(data, records, opts = {}) {
   const hikes = data.hikes
+  const units = data.units ?? { distance: 'km', elevation: 'm' }
   const report = []
   const added = []
-  for (const rec of records) {
-    const slugId = slugify(`${rec.name} ${rec.startLocal?.slice(0, 10) ?? ''}`)
-    const existing = findExisting(hikes, rec, slugId, opts)
-    const stats = statsFor(rec, data.units)
+  const owners = (rec) => new Set(hikes.filter((h) => linkedIds(h).some((id) => idsOf(rec).includes(id))))
+  // Pieces of one outing that were already curated as separate hikes stay separate.
+  const recs = records.flatMap((r) => (r.segments && owners(r).size > 1 ? r.segments : [r]))
+  for (const rec of recs) {
+    const name = niceName(rec.name, rec.locationName)
+    const day = rec.startLocal?.slice(0, 10) ?? ''
+    const slugBase = (n) => slugify(opts.withDates ? `${n} ${day}` : n)
+    const ids = idsOf(rec)
+    const existing = findExisting(hikes, rec, slugBase(name), opts)
     if (existing) {
+      if (!opts.as && linkedIds(existing).some((id) => !ids.includes(id))) {
+        report.push({ action: 'unchanged', hike: existing, rec })
+        continue
+      }
       const before = JSON.stringify(existing)
+      const stats = statsFor(rec, units, opts)
+      if (!opts.withDates) for (const k of DATE_FIELDS) delete existing[k]
+      if (!stats.garminActivityIds) delete existing.garminActivityIds
       Object.assign(existing, stats)
       if (isPlaceholder(existing.difficulty)) existing.difficulty = autoDifficulty(rec.distanceKm, rec.elevationGainM, rec.movingSec)
-      if (isPlaceholder(existing.location) && rec.locationName) existing.location = rec.locationName
+      if (isPlaceholder(existing.location) && rec.locationName) existing.location = placeFor(rec.locationName, hikes)
       report.push({ action: before === JSON.stringify(existing) ? 'unchanged' : 'updated', hike: existing, rec })
     } else {
-      const taken = new Set([...hikes, ...added].map((h) => h.id))
+      const all = [...hikes, ...added]
+      const names = new Set(all.map((h) => h.name))
+      let display = name
+      for (let n = 2; names.has(display); n++) display = `${name}, Round ${n}`
+      const taken = new Set(all.map((h) => h.id))
+      const slugId = slugBase(display)
       let id = slugId
       for (let n = 2; taken.has(id); n++) id = `${slugId}-${n}`
+      const stats = statsFor(rec, units, opts)
+      const difficulty = autoDifficulty(rec.distanceKm, rec.elevationGainM, rec.movingSec)
       const hike = {
         id,
-        name: rec.name,
-        location: rec.locationName || '[Where was this?]',
+        name: display,
+        location: placeFor(rec.locationName, all),
         ...stats,
-        difficulty: autoDifficulty(rec.distanceKm, rec.elevationGainM, rec.movingSec),
-        photos: [{ src: '', alt: '[Describe the photo]', caption: '[caption]' }],
-        experience: '[What was the day like? Who were you with? What surprised you?]',
-        takeaway: '[Your personal takeaway]',
+        difficulty,
+        photos: [{ src: '', alt: display, caption: `#${slugify(rec.locationName || display).replace(/-/g, '')}` }],
+        experience: factLine(stats, units),
+        takeaway: TAKEAWAYS[difficulty],
       }
       // Keep a stable, readable key order for new entries.
       const ordered = {}
@@ -487,7 +611,8 @@ export function mergeHikes(data, records, opts = {}) {
       report.push({ action: 'added', hike: ordered, rec })
     }
   }
-  added.sort((a, b) => String(a.startTime ?? '').localeCompare(String(b.startTime ?? '')))
+  const startOf = new Map(report.map((r) => [r.hike, timeOf(r.rec)]))
+  added.sort((a, b) => (startOf.get(a) || 0) - (startOf.get(b) || 0))
   hikes.push(...added)
   return report
 }
@@ -515,14 +640,15 @@ export function formatJson(value, indent = '') {
 
 const fmtDur = (s) => (s == null ? '—' : `${Math.floor(s / 3600)}h${String(Math.round((s % 3600) / 60)).padStart(2, '0')}`)
 
-function printReport(report, skipped, units) {
-  const rows = report.map(({ action, hike }) => [
-    action, hike.id, hike.startTime?.slice(0, 10) ?? hike.date, `${hike.distance} ${units.distance}`,
+function printReport(report, skipped, units, opts = {}) {
+  const rows = report.map(({ action, hike, rec }) => [
+    action, hike.id, ...(opts.withDates ? [hike.startTime?.slice(0, 10) ?? hike.date] : []), `${hike.distance} ${units.distance}`,
     `${hike.elevationGain} ${units.elevation}`, fmtDur(hike.movingTime), hike.profile ? `${hike.profile.length} pts` : '—', hike.difficulty,
+    rec.segments ? `${rec.segments.length} merged` : '',
   ])
-  const head = ['action', 'id', 'date', 'distance', 'gain', 'moving', 'profile', 'difficulty']
+  const head = ['action', 'id', ...(opts.withDates ? ['date'] : []), 'distance', 'gain', 'moving', 'profile', 'difficulty', 'pieces']
   const w = head.map((h, i) => Math.max(h.length, ...rows.map((r) => String(r[i]).length)))
-  const line = (r) => r.map((c, i) => String(c).padEnd(w[i])).join('  ')
+  const line = (r) => r.map((c, i) => String(c).padEnd(w[i])).join('  ').trimEnd()
   if (rows.length) console.log(`\n${line(head)}\n${w.map((n) => '-'.repeat(n)).join('  ')}\n${rows.map(line).join('\n')}`)
   for (const s of skipped) console.log(`skipped  ${s.file}: ${s.skip}`)
   const count = (a) => report.filter((r) => r.action === a).length
@@ -553,7 +679,7 @@ async function main() {
     }
   }
 
-  let combined = combine(records)
+  let combined = groupOutings(combine(records), opts.minKm)
   if (opts.minKm > 0) {
     for (const r of combined) if (r.distanceKm < opts.minKm) skipped.push({ file: r.name, skip: `${round(r.distanceKm, 1)} km is under --min-km ${opts.minKm}` })
     combined = combined.filter((r) => !(r.distanceKm < opts.minKm))
@@ -563,7 +689,7 @@ async function main() {
   const data = JSON.parse(fs.readFileSync(opts.data, 'utf8'))
   data.units ??= { distance: 'km', elevation: 'm' }
   const report = mergeHikes(data, combined, opts)
-  printReport(report, skipped, data.units)
+  printReport(report, skipped, data.units, opts)
 
   const target = opts.out ?? opts.data
   if (opts.dryRun) console.log('(dry run — nothing written)')

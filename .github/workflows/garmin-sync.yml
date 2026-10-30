@@ -95,7 +95,9 @@ jobs:
           if [ "$count" = 0 ]; then
             echo "No hikes on Garmin in this window."
           else
-            node scripts/import-garmin.mjs "$dir" --min-km 2
+            # --private (the default): no dates, start times or GPS start points in the public repo.
+            # Same-name pieces from one day are merged; hand-edited names, text and photos are kept.
+            node scripts/import-garmin.mjs "$dir" --min-km 2 --private
           fi
 
       - name: Check for changes

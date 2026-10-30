@@ -108,9 +108,15 @@ You can re-run a deploy any time from the **Actions** tab ("Deploy to GitHub Pag
 
 ## Hiking data from Garmin
 
-Hikes in the Mountains world come from `src/data/hikes.json`. Instead of typing distances by hand, you can pull them from your Garmin watch. A hike imported from Garmin gets its real date, distance, elevation gain, moving and total time, high point and a **real elevation profile**. The journal page labels that profile "from Garmin", while hikes without a GPX track keep the illustrative curve.
+Hikes in the Mountains world come from `src/data/hikes.json`. Instead of typing distances by hand, you can pull them from your Garmin watch. A hike imported from Garmin gets its real distance, elevation gain, moving and total time, high point and a **real elevation profile**. The journal page labels that profile "from Garmin", while hikes without a GPX track keep the illustrative curve.
 
-The merge never overwrites what you wrote yourself. Name, location, photos, experience, takeaway and difficulty stay as they are. Only Garmin's numbers are refreshed. New hikes are added with `[placeholder]` text, an empty photo and an automatic difficulty (based on distance, climb and hours on the trail). A Garmin activity is matched to an existing hike by its Garmin activity ID. The first time, it's matched by name instead, on a hike whose date is still a placeholder: for example, "Niagara Falls Hiking" matches "Niagara Falls". Re-importing the same files changes nothing.
+**Privacy:** this repo is public, so by default the importer never writes dates, start times or GPS coordinates into `hikes.json`, and doesn't print dates in its log. It keeps the Garmin activity ID so later syncs recognise hikes they've already added. The journal page simply hides the date line when a hike has none (`date` is optional free text such as "Summer 2025" if you want one). If you really want real dates and start points, pass `--with-dates`.
+
+The merge never overwrites what you wrote yourself. Name, location, photos, experience, takeaway and difficulty stay as they are. Only Garmin's numbers are refreshed. New hikes get a tidied name ("chapel trail" → "Chapel Trail"; Garmin's auto-names like "Yavapai County Hiking" → "Yavapai County Trails"; repeats become "…, Round 2"), the full location already used by another hike when Garmin only knows the town ("Toronto" → "Toronto, Ontario, Canada"), an illustrated photo placeholder with a hashtag caption, a one-line stats summary as the story, and an automatic difficulty (based on distance, climb and hours on the trail). Rename them and add your own story and photos whenever you like.
+
+A Garmin activity is matched to an existing hike by its Garmin activity ID. The first time, it's matched by name instead, on a hike that has no Garmin link and no date: for example, "Niagara Falls Hiking" matches "Niagara Falls". Re-importing the same files changes nothing.
+
+One outing recorded as several activities is merged into one hike (distance, climb and times summed, elevation profiles joined): same activity name, same day, and either one piece is shorter than `--min-km` or the second piece starts within 10 minutes of the first ending (watch restarted). A merged hike lists all its IDs in `garminActivityIds`. Two real hikes on the same day stay separate, and so do pieces you've already split into separate hikes yourself.
 
 There are two free options: export files by hand, or let a weekly job fetch them with Garmin's official Personal API.
 
@@ -128,7 +134,7 @@ There are two free options: export files by hand, or let a weekly job fetch them
 
    - If your Garmin account shows **miles/feet**, add `--imperial` (only matters for the CSV; GPX is always metric).
    - To attach one GPX to a hike that's already on the site, use its id: `npm run import:garmin -- activity_123.gpx --as horseshoe-bend`.
-   - Other options: `--since 2025-01-01`, `--min-km 2` (skip short fragments, e.g. when the watch was restarted mid-hike), `--all-types` (don't skip runs/rides), `--out other.json`. See `npm run import:garmin -- --help`.
+   - Other options: `--since 2025-01-01`, `--min-km 2` (skip short stray fragments; a fragment with the same name and day as a longer hike is merged into it instead), `--all-types` (don't skip runs/rides), `--out other.json`. See `npm run import:garmin -- --help`.
 
 5. Check `npm run dev`, fill in any `[placeholders]`, then commit `src/data/hikes.json` and push to `main`. The site redeploys automatically.
 
@@ -136,7 +142,7 @@ Running the same hike through both the CSV and its GPX is fine: they are merged 
 
 ### Option 2 — weekly automatic sync (official Personal API)
 
-`.github/workflows/garmin-sync.yml` ("Garmin weekly sync") runs every Monday at 06:17 UTC and on demand. It uses Garmin's official [Connect Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api) to download your hiking and mountaineering activities from the last 45 days (summary plus GPS and elevation track), skips fragments shorter than 2 km, then runs the same importer. If `src/data/hikes.json` changed, it builds the site, commits the file to `main` and redeploys GitHub Pages in the same run. If nothing changed, nothing is committed or deployed. Without the secret it does nothing and still shows green.
+`.github/workflows/garmin-sync.yml` ("Garmin weekly sync") runs every Monday at 06:17 UTC and on demand. It uses Garmin's official [Connect Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api) to download your hiking and mountaineering activities from the last 45 days (summary plus GPS and elevation track), skips stray fragments shorter than 2 km, then runs the same importer with `--private` (no dates, start times or coordinates; same-day pieces merged; your edits kept). If `src/data/hikes.json` changed, it builds the site, commits the file to `main` and redeploys GitHub Pages in the same run. If nothing changed, nothing is committed or deployed. Without the secret it does nothing and still shows green.
 
 **Setup:**
 
@@ -145,7 +151,7 @@ Running the same hike through both the CSV and its GPX is fine: they are merged 
 3. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
 4. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch).
 5. Run it once by hand: **Actions → Garmin weekly sync → Run workflow**. You can set how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. With the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=90`.
-6. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards. Later syncs keep your edits.
+6. New hikes appear on the site with a tidied name, a stats line and a photo placeholder, so edit their name, location, story and photos in `src/data/hikes.json` afterwards. Later syncs keep your edits.
 
 **When the key expires:** Garmin emails you about a week before. Create a new key and paste it over the `GARMIN_API_KEY` secret. If the key is wrong, deleted or expired, the run turns red with a plain-English reason and nothing is committed or deployed; the site keeps working. The key is stored encrypted by GitHub and never shipped to the website. If it ever leaks, delete it on the Garmin page and create a new one.
 

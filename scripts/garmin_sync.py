@@ -128,13 +128,14 @@ def sync(out: pathlib.Path, days: int, types: set):
     start = end - dt.timedelta(days=days)
     activities = client.activities(start, end)
     hikes = [a for a in activities if ((a.get("activityType") or {}).get("typeKey") or "").lower() in types]
-    print(f"{len(activities)} activities since {start}, {len(hikes)} of them hikes/walks.")
+    print(f"{len(activities)} activities in the last {days} days, {len(hikes)} of them hikes/walks.")
 
     out.mkdir(parents=True, exist_ok=True)
     (out / "activities.json").write_text(json.dumps(hikes, indent=2, default=str))
     for a in hikes:
         aid = a.get("activityId")
-        label = f"{(a.get('startTimeLocal') or '')[:10]}  {a.get('activityName')}  ({aid})"
+        # No dates: Actions logs of a public repo are public.
+        label = f"{a.get('activityName')}  ({aid})"
         try:
             gpx = client.gpx(a)
         except urllib.error.URLError as e:
