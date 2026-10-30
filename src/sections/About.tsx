@@ -1,10 +1,11 @@
-import { useState, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react'
-import { Check, Sparkles, Sword, Shield, Map } from 'lucide-react'
+import { Check, ChevronLeft, ChevronRight, Sparkles, Sword, Shield, Map } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import { BackHome, Reveal, SectionTitle } from '../components/Bits'
 import { Editable } from '../components/Editable'
 import { InstagramIcon } from '../components/BrandIcons'
+import { MUSIC_PAUSE, MUSIC_RESUME } from '../components/MusicPlayer'
 import { about, links, photos, site } from '../data/content'
 import { asset } from '../lib/asset'
 
@@ -113,7 +114,7 @@ function FlipCard({ item, index }: { item: ResumeItem; index: number }) {
         className="relative h-full w-full [transform-style:preserve-3d]"
       >
         <button
-          onClick={() => setFlipped(true)}
+          onClick={() => { setFlipped(true); if (song) window.dispatchEvent(new Event(MUSIC_PAUSE)) }}
           aria-hidden={flipped}
           tabIndex={flipped ? -1 : 0}
           aria-label={song ? `${title}. Play the song.` : `${title}. Flip to reveal.`}
@@ -141,7 +142,7 @@ function FlipCard({ item, index }: { item: ResumeItem; index: number }) {
               </div>
               <div className="mt-2 flex items-center justify-between gap-2">
                 <p className="truncate text-sm font-semibold">{item.body}</p>
-                <button onClick={() => setFlipped(false)} tabIndex={flipped ? 0 : -1} className="shrink-0 rounded-full border-2 border-cream px-3 py-1 text-xs font-bold hover:bg-hot">
+                <button onClick={() => { setFlipped(false); window.dispatchEvent(new Event(MUSIC_RESUME)) }} tabIndex={flipped ? 0 : -1} className="shrink-0 rounded-full border-2 border-cream px-3 py-1 text-xs font-bold hover:bg-hot">
                   stop ■
                 </button>
               </div>
@@ -153,6 +154,71 @@ function FlipCard({ item, index }: { item: ResumeItem; index: number }) {
           )}
         </div>
       </motion.div>
+    </div>
+  )
+}
+
+function PhotoStrip() {
+  const track = useRef<HTMLUListElement>(null)
+  const [edge, setEdge] = useState({ start: true, end: false })
+  const drag = useRef<{ x: number; left: number } | null>(null)
+
+  const update = () => {
+    const el = track.current
+    if (!el) return
+    setEdge({ start: el.scrollLeft < 8, end: el.scrollLeft + el.clientWidth > el.scrollWidth - 8 })
+  }
+  const endDrag = () => {
+    if (!drag.current) return
+    drag.current = null
+    if (track.current) track.current.style.scrollSnapType = ''
+  }
+  const by = (dir: 1 | -1) => track.current?.scrollBy({ left: dir * track.current.clientWidth * 0.8, behavior: 'smooth' })
+
+  return (
+    <div className="relative">
+      <ul
+        ref={track}
+        onScroll={update}
+        tabIndex={0}
+        aria-label="Photo dump — scroll sideways"
+        onKeyDown={(e) => {
+          if (e.key === 'ArrowRight') { e.preventDefault(); by(1) }
+          if (e.key === 'ArrowLeft') { e.preventDefault(); by(-1) }
+        }}
+        onPointerDown={(e) => {
+          if (e.pointerType !== 'mouse' || !track.current) return
+          drag.current = { x: e.clientX, left: track.current.scrollLeft }
+          track.current.style.scrollSnapType = 'none'
+        }}
+        onPointerMove={(e) => {
+          const d = drag.current
+          if (!d || !track.current) return
+          track.current.scrollLeft = d.left - (e.clientX - d.x)
+        }}
+        onPointerUp={() => endDrag()}
+        onPointerLeave={() => endDrag()}
+        className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-6 overflow-x-auto px-4 pb-8 pt-4 [scrollbar-color:#FF4FA3_transparent] [scrollbar-width:thin] active:cursor-grabbing md:-mx-8 md:px-8"
+      >
+        {photos.gallery.map((p, i) => (
+          <li key={p.src} className="w-56 shrink-0 snap-center sm:w-64 md:w-72">
+            <motion.figure
+              whileHover={{ rotate: 0, y: -6 }}
+              className={`select-none border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
+            >
+              <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" draggable={false} className="aspect-[4/5] w-full border-2 border-ink object-cover" />
+              <figcaption className="-mb-7 mt-1 truncate text-center font-hand text-xl">{p.caption}</figcaption>
+            </motion.figure>
+          </li>
+        ))}
+      </ul>
+      <div className="mt-2 flex items-center justify-between gap-3">
+        <p className="font-hand text-xl text-berry">{photos.gallery.length} photos · swipe, drag or use the arrows →</p>
+        <div className="flex gap-2">
+          <button onClick={() => by(-1)} disabled={edge.start} aria-label="Previous photos" className="btn-cream !p-2.5"><ChevronLeft size={18} /></button>
+          <button onClick={() => by(1)} disabled={edge.end} aria-label="Next photos" className="btn-hot !p-2.5"><ChevronRight size={18} /></button>
+        </div>
+      </div>
     </div>
   )
 }
@@ -221,19 +287,7 @@ export function About() {
               <InstagramIcon size={18} /> Follow {links.instagramHandle}
             </a>
           </div>
-          <ul className="columns-2 gap-5 md:columns-3">
-            {photos.gallery.map((p, i) => (
-              <li key={p.src} className="mb-5 break-inside-avoid">
-                <motion.figure
-                  whileHover={{ rotate: 0, scale: 1.03 }}
-                  className={`border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
-                >
-                  <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" className="w-full border-2 border-ink" />
-                  <figcaption className="-mb-7 mt-1 text-center font-hand text-xl">{p.caption}</figcaption>
-                </motion.figure>
-              </li>
-            ))}
-          </ul>
+          <PhotoStrip />
         </div>
       </section>
     </>

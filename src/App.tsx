@@ -8,6 +8,7 @@ import { Nav } from './components/Nav'
 import { Footer } from './components/Footer'
 import { CursorCompanion } from './components/CursorCompanion'
 import { BadgeWidget, Toasts } from './components/BadgeWidget'
+import { MusicPlayer } from './components/MusicPlayer'
 import { Home } from './sections/Home'
 import { About } from './sections/About'
 import { Connect } from './sections/Connect'
@@ -127,6 +128,7 @@ function Shell() {
       </div>
       <CursorCompanion />
       <BadgeWidget />
+      <MusicPlayer />
       <Toasts />
     </>
   )

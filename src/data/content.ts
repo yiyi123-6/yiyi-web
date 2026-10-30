@@ -37,6 +37,14 @@ export const links = {
   resume: '', // ✎ optional: 'files/resume.pdf' in /public/files — leave '' to hide
 }
 
+/** Theme song that starts on the visitor's first tap/click (browsers block sound before that). */
+export const music = {
+  title: "Life's What You Make It",
+  artist: 'Hannah Montana',
+  youtubeId: 'j-gwZgEgwq8', // official "Hannah Montana - Topic" audio
+  volume: 35, // 0–100
+}
+
 /** Real photos (from Instagram). Files live in /public/images/instagram. */
 export const photos = {
   profile: { src: 'images/instagram/profile.webp', alt: 'Yiyi smiling in headphones' },
@@ -44,10 +52,20 @@ export const photos = {
   /** Photo dump shown on the About page. */
   gallery: [
     { src: 'images/instagram/seattle-cherry-blossom-1.webp', alt: 'Yiyi under cherry blossoms in Seattle', caption: 'miss the cherry blossoms in Seattle' },
+    { src: 'images/instagram/horseshoe-bend-3.webp', alt: 'Yiyi sitting on the rim of Horseshoe Bend', caption: '#horseshoebend' },
     { src: 'images/instagram/campus-1.webp', alt: 'Yiyi in a polka-dot dress by a tall window', caption: '🏫' },
+    { src: 'images/instagram/niagara-2.webp', alt: 'Yiyi on rocks above the turquoise Niagara River', caption: '#niagarafallscanada' },
     { src: 'images/instagram/las-vegas-1.webp', alt: 'Yiyi on the Las Vegas strip', caption: '#lasvegas' },
     { src: 'images/instagram/la-jolla-1.webp', alt: 'Yiyi in red at Cabrillo National Monument', caption: 'red fit, blue sky' },
+    { src: 'images/instagram/los-angeles-1.webp', alt: 'Yiyi looking out at the Hollywood sign', caption: '#losangeles' },
     { src: 'images/instagram/campus-3.webp', alt: 'Yiyi walking up a wooden staircase', caption: 'main character stairs' },
+    { src: 'images/instagram/la-jolla-3.webp', alt: 'Yiyi on a bench overlooking the Pacific', caption: '#lajollacove' },
+    { src: 'images/instagram/los-angeles-2.webp', alt: 'Yiyi on a giant red sofa', caption: 'sit down, it’s a big one' },
+    { src: 'images/instagram/seattle-cherry-blossom-2.webp', alt: 'Yiyi and a friend among cherry blossoms', caption: 'blossom season' },
+    { src: 'images/instagram/niagara-1.webp', alt: 'Yiyi above the Niagara gorge', caption: 'that colour is real' },
+    { src: 'images/instagram/campus-2.webp', alt: 'Yiyi on a staircase under a domed ceiling', caption: 'look up' },
+    { src: 'images/instagram/los-angeles-3.webp', alt: 'Yiyi by the Angels Flight railway', caption: 'angels flight' },
+    { src: 'images/instagram/las-vegas-2.webp', alt: 'The Welcome to Fabulous Las Vegas sign at night', caption: 'fabulous, obviously' },
     { src: 'images/instagram/beach-sunset.webp', alt: 'Yiyi walking on a beach at sunset', caption: '🏖️+🌅' },
   ] as Photo[],
 }
