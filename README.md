@@ -61,6 +61,20 @@ You shouldn't need to touch any component to personalise the site.
 - **Photos:** drop files into `public/images/` and reference them in the data files as `images/your-file.jpg` (no leading slash — the site adds the correct base path automatically). Leave `src: ''` to show an illustrated placeholder instead. WebP/JPEG around 1200px wide keeps things fast.
 - **Placeholders:** any text wrapped in `[square brackets]` (e.g. `[Your city]`) is a placeholder. It's automatically highlighted with a dashed pink outline on the site so you can spot what still needs real info — replace it and the highlight disappears.
 
+## Invites straight to Gmail
+
+The Tiny AI's **Invite Yiyi ♡** button and the Connect page send messages directly to `links.email`. Visitors don't need an email app, and replying to the email answers them.
+
+**Recommended: your own Google Apps Script relay** (free, sent from your Gmail):
+
+1. Open [script.google.com](https://script.google.com), click **New project**, paste in `scripts/invite-relay.gs`, and save.
+2. Click **Deploy → New deployment → Web app**. Set **Execute as: Me** and **Who has access: Anyone**, then click **Deploy** and authorize.
+3. Copy the **Web app URL** (it ends in `/exec`) into `links.inviteScriptUrl` in `src/data/content.ts`, then commit and push.
+
+**Fallback: FormSubmit.** If `inviteScriptUrl` is empty, invites go through [FormSubmit](https://formsubmit.co) (free, no account needed). The first invite triggers a one-time **"Activate Form"** email to your Gmail; click it, and every invite after that arrives normally.
+
+If either relay is unreachable, the form shows a "send it from your email app" link.
+
 ## Easter eggs
 
 1. **The heart in the footer** — click it 5 times.

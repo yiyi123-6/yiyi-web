@@ -3,7 +3,8 @@ import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
 import { Cloud, CloudRain, Dices, RotateCcw, Snowflake, Sparkles, Sun, Send, Target, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { FEATURES, ITEMS, pick, scoreItems, type Pick, type Prefs, type Weather } from './tinyAi'
 import { confettiFrom } from '../../lib/confetti'
-import { links, site } from '../../data/content'
+import { site } from '../../data/content'
+import { InviteForm } from '../../components/InviteForm'
 
 const WEATHER: { id: Weather; label: string; icon: typeof Sun }[] = [
   { id: 'sunny', label: 'Sunny', icon: Sun },
@@ -60,6 +61,7 @@ export function TinyAI() {
   const [bias, setBias] = useState<Record<string, number>>({})
   const [current, setCurrent] = useState<Pick | null>(null)
   const [voted, setVoted] = useState<'up' | 'down' | null>(null)
+  const [inviting, setInviting] = useState(false)
   const [stats, setStats] = useState({ explore: 0, exploit: 0, exploreLikes: 0, exploitLikes: 0 })
   const cardRef = useRef<HTMLDivElement>(null)
 
@@ -71,6 +73,7 @@ export function TinyAI() {
     const p = pick(ranked, epsilon)
     setCurrent(p)
     setVoted(null)
+    setInviting(false)
     setStats((s) => ({ ...s, [p.mode]: s[p.mode] + 1 }))
   }
 
@@ -213,12 +216,9 @@ export function TinyAI() {
                     <button onClick={() => vote('down')} disabled={!!voted} className="btn-cream !py-2" aria-label="I don't like this recommendation">
                       <ThumbsDown size={16} /> Nope
                     </button>
-                    <a
-                      href={`mailto:${links.email}?subject=${encodeURIComponent(`Let's do this: ${shown.item.name}`)}&body=${encodeURIComponent(`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in. When are you free?`)}`}
-                      className="btn-hot !py-2"
-                    >
+                    <button onClick={() => setInviting((v) => !v)} aria-expanded={inviting} className="btn-hot !py-2">
                       <Send size={16} /> Invite {site.name} ♡
-                    </a>
+                    </button>
                     {voted && (
                       <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-hand text-xl text-berry">
                         {voted === 'up'
@@ -229,6 +229,16 @@ export function TinyAI() {
                       </motion.span>
                     )}
                   </div>
+                  {inviting && (
+                    <motion.div initial={{ opacity: 0, height: 0 }} animate={{ opacity: 1, height: 'auto' }} className="mt-4 overflow-hidden border-t-2 border-dashed border-ink/20 pt-4">
+                      <InviteForm
+                        key={shown.item.id}
+                        source="Tiny AI on Yiyi's Universe"
+                        subject={`Let's do this: ${shown.item.name} ${shown.item.emoji}`}
+                        message={`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in. When are you free?`}
+                      />
+                    </motion.div>
+                  )}
                   {stale && <p className="mt-3 text-sm font-semibold text-berry">Your inputs changed: the #1 pick is now {top.item.emoji} {top.item.name}. Ask again!</p>}
                 </motion.div>
               ) : (
