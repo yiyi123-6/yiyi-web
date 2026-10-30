@@ -1,0 +1,76 @@
+{
+  "_howTo": "Add an adventure by copying one object in `hikes` and editing it. Pins on the map are placed automatically from elevationGain. Photos go in /public/images (e.g. \"images/my-hike.webp\"); leave src empty for an illustrated placeholder. Distance/elevation values are approximate — replace them with your own Strava numbers.",
+  "units": { "distance": "km", "elevation": "m" },
+  "hikes": [
+    {
+      "id": "niagara",
+      "name": "Niagara Falls",
+      "location": "Niagara Falls, Ontario, Canada",
+      "date": "[Month Year]",
+      "distance": 5,
+      "elevationGain": 40,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "images/instagram/niagara-1.webp", "alt": "Yiyi overlooking the Niagara River gorge", "caption": "#niagarafallscanada" },
+        { "src": "images/instagram/niagara-2.webp", "alt": "Yiyi sitting on rocks above turquoise water", "caption": "that colour is real" },
+        { "src": "images/instagram/niagara-3.webp", "alt": "Yiyi on the rocks by the Niagara River", "caption": "rock sitting champion" }
+      ],
+      "experience": "[What was the day like? Who were you with? What surprised you?]",
+      "takeaway": "The view is better after the climb."
+    },
+    {
+      "id": "horseshoe-bend",
+      "name": "Horseshoe Bend",
+      "location": "Page, Arizona, USA",
+      "date": "[Month Year]",
+      "distance": 2.4,
+      "elevationGain": 60,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "images/instagram/horseshoe-bend-1.webp", "alt": "Yiyi in a red dress at the edge of Horseshoe Bend", "caption": "#horseshoebend" },
+        { "src": "images/instagram/horseshoe-bend-2.webp", "alt": "The Colorado River curving around Horseshoe Bend", "caption": "nature showing off" },
+        { "src": "images/instagram/horseshoe-bend-3.webp", "alt": "Yiyi sitting on the canyon rim", "caption": "edge of the world" }
+      ],
+      "experience": "[Describe standing at the rim for the first time.]",
+      "takeaway": "[Your personal takeaway]"
+    },
+    {
+      "id": "la-jolla-cabrillo",
+      "name": "La Jolla Cove & Cabrillo",
+      "location": "San Diego, California, USA",
+      "date": "[Month Year]",
+      "distance": 6,
+      "elevationGain": 120,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "images/instagram/la-jolla-1.webp", "alt": "Yiyi in a red outfit at Cabrillo National Monument", "caption": "#cabrillonationalmonument" },
+        { "src": "images/instagram/la-jolla-2.webp", "alt": "Yiyi sitting on a wall above the Pacific", "caption": "#lajollacove" },
+        { "src": "images/instagram/la-jolla-3.webp", "alt": "Yiyi on a bench overlooking the ocean", "caption": "bench with a view" }
+      ],
+      "experience": "[Sea lions? Tide pools? Sunset? Tell the story.]",
+      "takeaway": "[Your personal takeaway]"
+    },
+    {
+      "id": "los-angeles",
+      "name": "Hollywood Hills",
+      "location": "Los Angeles, California, USA",
+      "date": "[Month Year]",
+      "distance": 8,
+      "elevationGain": 300,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "images/instagram/los-angeles-1.webp", "alt": "Yiyi looking out at the Hollywood sign", "caption": "#losangeles" },
+        { "src": "images/instagram/los-angeles-2.webp", "alt": "Yiyi on a giant red sofa", "caption": "sit down, it's a big one" },
+        { "src": "images/instagram/los-angeles-3.webp", "alt": "Yiyi by the Angels Flight railway", "caption": "angels flight" }
+      ],
+      "experience": "[What did you explore in LA?]",
+      "takeaway": "[Your personal takeaway]"
+    }
+  ],
+  "dreams": [
+    { "name": "[Dream trek #1]", "where": "[Country]", "why": "[Why it is on the list]", "emoji": "🏔️" },
+    { "name": "[Dream trek #2]", "where": "[Country]", "why": "[Why it is on the list]", "emoji": "🌋" },
+    { "name": "[Dream trek #3]", "where": "[Country]", "why": "[Why it is on the list]", "emoji": "🧊" },
+    { "name": "[Dream trek #4]", "where": "[Country]", "why": "[Why it is on the list]", "emoji": "🌸" }
+  ]
+}
