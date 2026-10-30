@@ -117,7 +117,7 @@ export const brain = {
   ],
   /** Career quest log, newest first. Leave `org` '' to show just the role. */
   experience: [
-    { role: 'Senior Data Scientist', org: '', when: '2026 – now', blurb: 'The current chapter: designing end-to-end machine learning systems.' },
+    { role: 'Senior Data Scientist', org: 'Homebase', when: '2026 – now', blurb: 'The current chapter: designing end-to-end machine learning systems.' },
     { role: 'Data Scientist', org: 'Canadian Tire', when: 'May 2023 – Jul 2025', blurb: 'Production ML for A/B testing, customer segmentation and marketing campaigns.' },
     { role: 'Data Science & Advanced Analytics', org: 'TD Bank', when: 'Jan – Apr 2023', blurb: 'NLP, web scraping and SQL to automate auditing and regulatory work.' },
     { role: 'Data Engineer', org: 'HUAWEI Technologies', when: 'May – Dec 2021', blurb: 'Python clean-up of hundreds of Excel files (+25% efficiency), then a migration to SQL Server.' },
