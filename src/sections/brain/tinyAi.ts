@@ -32,7 +32,6 @@ export const ITEMS: Item[] = [
   { id: 'side', name: 'Hack on a side project', emoji: '💻', hours: 3, outdoor: false, f: { adventure: 0.3, energy: 0.3, brainy: 1, social: 0.1 } },
   { id: 'paper', name: 'ML paper + matcha latte', emoji: '🍵', hours: 1.5, outdoor: false, f: { adventure: 0.05, energy: 0.1, brainy: 0.9, social: 0 } },
   { id: 'brunch', name: 'Brunch & big startup ideas', emoji: '🥞', hours: 2, outdoor: false, f: { adventure: 0.3, energy: 0.3, brainy: 0.5, social: 1 } },
-  { id: 'boulder', name: 'Bouldering with friends', emoji: '🧗‍♀️', hours: 2, outdoor: false, f: { adventure: 0.7, energy: 0.8, brainy: 0.3, social: 0.7 } },
   { id: 'hackathon', name: 'Weekend hackathon', emoji: '🚀', hours: 8, outdoor: false, f: { adventure: 0.6, energy: 0.6, brainy: 0.95, social: 0.8 } },
   { id: 'snowshoe', name: 'Snowshoe trek', emoji: '❄️', hours: 5, outdoor: true, snowFriendly: true, f: { adventure: 0.9, energy: 0.8, brainy: 0.05, social: 0.5 } },
   { id: 'cozy', name: 'Movie, face mask & snacks', emoji: '🎬', hours: 2, outdoor: false, f: { adventure: 0, energy: 0, brainy: 0.1, social: 0.3 } },
