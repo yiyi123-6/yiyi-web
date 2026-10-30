@@ -1,0 +1,4 @@
+Activity Type,Date,Favorite,Title,Distance,Calories,Time,Avg HR,Max HR,Total Ascent,Total Descent,Moving Time,Elapsed Time,Min Elevation,Max Elevation
+Hiking,2025-07-19 08:05:00,false,Sample Ridge Hiking,14.92,2950,07:53:00,118,162,931,925,07:26:20,07:53:00,281,1208
+Running,2025-07-21 18:30:00,false,Evening Run,5.02,380,00:27:41,151,176,22,21,00:27:30,00:27:41,10,25
+Hiking,2025-08-02 09:10:00,false,Sample Lake Loop Hiking,12.3,1210,05:42:00,110,149,640,640,05:05:00,05:42:00,820,1365
