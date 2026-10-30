@@ -1,15 +1,38 @@
 import { useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronLeft, ChevronRight, Footprints, MapPin, Mountain, TrendingUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, Footprints, MapPin, Mountain, MountainSnow, TrendingUp } from 'lucide-react'
 import { BackHome, Reveal, SectionTitle } from '../../components/Bits'
 import { Editable } from '../../components/Editable'
 import { Photo } from '../../components/Photo'
-import { site } from '../../data/content'
+import { site, type Photo as PhotoT } from '../../data/content'
 import data from '../../data/hikes.json'
 import { useUniverse } from '../../lib/universe'
 
-type Hike = (typeof data.hikes)[number]
-const { hikes, dreams, units } = data
+/** Shape of an entry in hikes.json. Everything after `takeaway` is optional and filled in by `npm run import:garmin`. */
+interface Hike {
+  id: string
+  name: string
+  location: string
+  date: string
+  distance: number
+  elevationGain: number
+  difficulty: string
+  photos: PhotoT[]
+  experience: string
+  takeaway: string
+  maxElevation?: number
+  /** seconds */
+  movingTime?: number
+  /** seconds */
+  elapsedTime?: number
+  /** elevations along the trail, evenly spaced by distance */
+  profile?: number[]
+  garminActivityId?: string
+  source?: string
+}
+
+const hikes = data.hikes as Hike[]
+const { dreams, units } = data
 
 const DIFFICULTY: Record<string, number> = { Easy: 1, Moderate: 2, Hard: 3, Epic: 4 }
 
@@ -31,6 +54,25 @@ function profilePath(h: Hike, w = 300, ht = 80) {
     return [t * w, ht - 6 - v * (ht - 14)] as const
   })
   return pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+}
+
+/** The recorded elevation profile, scaled to fit the same box. */
+function realProfilePath(profile: number[], w = 300, ht = 80) {
+  const lo = Math.min(...profile)
+  const range = Math.max(Math.max(...profile) - lo, 1)
+  return profile
+    .map((e, i) => {
+      const x = (i / Math.max(1, profile.length - 1)) * w
+      const y = ht - 6 - ((e - lo) / range) * (ht - 14)
+      return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+}
+
+function formatDuration(sec: number) {
+  const h = Math.floor(sec / 3600)
+  const m = Math.round((sec % 3600) / 60)
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
 }
 
 function GrowingRange() {
@@ -250,9 +292,26 @@ function SummitQuest() {
               </div>
             </dl>
 
+            {(hike.movingTime || hike.elapsedTime || hike.maxElevation != null) ? (
+              <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
+                {!!hike.movingTime && (
+                  <span className="chip"><Clock size={14} /> {formatDuration(hike.movingTime)} moving</span>
+                )}
+                {!!hike.elapsedTime && hike.elapsedTime - (hike.movingTime ?? 0) >= 60 && (
+                  <span className="chip"><Clock size={14} /> {formatDuration(hike.elapsedTime)} total</span>
+                )}
+                {hike.maxElevation != null && (
+                  <span className="chip"><MountainSnow size={14} /> high point {hike.maxElevation.toLocaleString()} {units.elevation}</span>
+                )}
+              </div>
+            ) : null}
+
             <svg viewBox="0 0 300 80" className="mt-5 w-full" aria-hidden>
+              {hike.profile && hike.profile.length > 1 && (
+                <path d={`${realProfilePath(hike.profile)} L300,76 L0,76 Z`} fill="#FF4FA3" opacity=".12" />
+              )}
               <motion.path
-                d={profilePath(hike)}
+                d={hike.profile && hike.profile.length > 1 ? realProfilePath(hike.profile) : profilePath(hike)}
                 fill="none"
                 stroke="#FF4FA3"
                 strokeWidth="3"
@@ -262,7 +321,11 @@ function SummitQuest() {
               />
               <line x1="0" x2="300" y1="76" y2="76" stroke="#21151D" strokeOpacity=".2" strokeWidth="2" />
             </svg>
-            <p className="text-right text-[10px] uppercase tracking-wider text-ink/40">elevation profile (illustrative)</p>
+            <p className="text-right text-[10px] uppercase tracking-wider text-ink/40">
+              {hike.profile && hike.profile.length > 1
+                ? `elevation profile (from Garmin) · ${Math.min(...hike.profile)}–${Math.max(...hike.profile)} ${units.elevation}`
+                : 'elevation profile (illustrative)'}
+            </p>
 
             <p className="mt-4 text-lg leading-8"><Editable text={hike.experience} /></p>
             <div className="mt-5 rotate-1 rounded-lg bg-baby p-4 shadow-[3px_3px_0_0_#21151D]">
