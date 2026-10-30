@@ -25,8 +25,8 @@ export const site = {
 export const links = {
   email: 'yiyitan076@gmail.com',
   /**
-   * Invites are sent straight to your Gmail. Paste your Google Apps Script web-app URL here
-   * (see scripts/invite-relay.gs). Leave '' to use FormSubmit instead.
+   * Your Google Apps Script web-app URL (see scripts/invite-relay.gs). Invites are then sent
+   * from your Gmail to your Gmail. While '' the form opens the visitor's email app instead.
    */
   inviteScriptUrl: '',
   linkedin: 'https://www.linkedin.com/in/yiyitan',

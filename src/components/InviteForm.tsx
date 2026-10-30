@@ -3,7 +3,7 @@ import { AnimatePresence, motion } from 'motion/react'
 import { Check, Loader2, Mail, Send } from 'lucide-react'
 import { site } from '../data/content'
 import { confettiFrom } from '../lib/confetti'
-import { isEmail, mailtoFor, sendInvite } from '../lib/invite'
+import { canSendDirectly, isEmail, mailtoFor, sendInvite } from '../lib/invite'
 
 type Props = {
   subject: string
@@ -39,10 +39,15 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
       setError(`Add your email so ${site.name} can reply.`)
       return
     }
+    const body = name.trim() ? `${msg}\n\n— ${name.trim()}` : msg
+    if (!canSendDirectly) {
+      window.location.href = mailtoFor(subject, body)
+      return
+    }
     setStatus('sending')
     setError('')
     try {
-      await sendInvite({ subject, message: name.trim() ? `${msg}\n\n— ${name.trim()}` : msg, name: name.trim(), replyTo: email.trim(), source })
+      await sendInvite({ subject, message: body, name: name.trim(), replyTo: email.trim(), source })
       setStatus('sent')
       confettiFrom(btn.current)
     } catch {
