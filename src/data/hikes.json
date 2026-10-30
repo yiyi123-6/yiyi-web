@@ -6,9 +6,9 @@
       "id": "niagara",
       "name": "Niagara Falls",
       "location": "Niagara Falls, Ontario, Canada",
-      "date": "October 24, 2026",
-      "distance": 5.2,
-      "elevationGain": 48,
+      "date": "[Month Year]",
+      "distance": 5,
+      "elevationGain": 40,
       "difficulty": "Easy",
       "photos": [
         { "src": "images/instagram/niagara-1.webp", "alt": "Yiyi overlooking the Niagara River gorge", "caption": "#niagarafallscanada" },
@@ -16,14 +16,7 @@
         { "src": "images/instagram/niagara-3.webp", "alt": "Yiyi on the rocks by the Niagara River", "caption": "rock sitting champion" }
       ],
       "experience": "[What was the day like? Who were you with? What surprised you?]",
-      "takeaway": "The view is better after the climb.",
-      "maxElevation": 190,
-      "startTime": "2026-10-24T09:15:00",
-      "movingTime": 5400,
-      "elapsedTime": 6600,
-      "start": { "lat": 43.0896, "lon": -79.0849 },
-      "garminActivityId": "111222333",
-      "source": "garmin"
+      "takeaway": "The view is better after the climb."
     },
     {
       "id": "horseshoe-bend",
@@ -72,28 +65,6 @@
       ],
       "experience": "[What did you explore in LA?]",
       "takeaway": "[Your personal takeaway]"
-    },
-    {
-      "id": "rattlesnake-point-2026-10-26",
-      "name": "Rattlesnake Point",
-      "location": "Milton",
-      "date": "October 26, 2026",
-      "distance": 8.1,
-      "elevationGain": 210,
-      "difficulty": "Moderate",
-      "photos": [
-        { "src": "", "alt": "[Describe the photo]", "caption": "[caption]" }
-      ],
-      "experience": "[What was the day like? Who were you with? What surprised you?]",
-      "takeaway": "[Your personal takeaway]",
-      "maxElevation": 330,
-      "startTime": "2026-10-26T10:00:00",
-      "movingTime": 9000,
-      "elapsedTime": 10800,
-      "start": { "lat": 43.47, "lon": -79.9 },
-      "profile": [122, 131, 141, 152, 162, 173, 183, 193, 203, 212, 222, 231, 239, 248, 256, 263, 270, 277, 284, 290, 295, 300, 304, 308, 311, 314, 317, 318, 319, 320, 320, 319, 318, 317, 314, 311, 308, 304, 300, 295, 290, 284, 277, 270, 263, 256, 248, 239, 231, 222, 212, 203, 193, 183, 173, 162, 152, 141, 131, 122],
-      "garminActivityId": "444555666",
-      "source": "garmin"
     }
   ],
   "dreams": [
