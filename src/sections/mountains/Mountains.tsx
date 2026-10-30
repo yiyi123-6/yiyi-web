@@ -6,6 +6,7 @@ import { Editable } from '../../components/Editable'
 import { Photo } from '../../components/Photo'
 import { site, type Photo as PhotoT } from '../../data/content'
 import data from '../../data/hikes.json'
+import { photosForHike } from '../../lib/hikePhotos'
 import { useUniverse } from '../../lib/universe'
 
 /** Shape of an entry in hikes.json. Everything after `takeaway` is optional and filled in by `npm run import:garmin`. */
@@ -190,6 +191,7 @@ function SummitQuest() {
   }))
   const trail = catmull([{ x: 10, y: H - 30 }, ...pins, { x: W - 10, y: pins[pins.length - 1]?.y ?? H / 2 }])
   const hike = hikes[idx]
+  const photos = photosForHike(hike.id, hike.photos)
   const label = (h: Hike) => h.name.replace(/[[\]]/g, '')
 
   const totalKm = hikes.reduce((s, h) => s + h.distance, 0)
@@ -405,13 +407,13 @@ function SummitQuest() {
           </div>
 
           <div className="grid auto-rows-[minmax(10rem,1fr)] grid-cols-2 gap-4">
-            {hike.photos.map((ph, i) => (
+            {photos.map((ph, i) => (
               <figure
-                key={i}
-                className={`sticker overflow-hidden bg-cream p-2 pb-8 ${hike.photos.length === 1 || i === 0 ? 'col-span-2' : ''} ${i % 2 ? 'rotate-2' : '-rotate-1'}`}
+                key={ph.src || i}
+                className={`sticker overflow-hidden bg-cream p-2 pb-8 ${photos.length === 1 || i === 0 ? 'col-span-2' : ''} ${i % 2 ? 'rotate-2' : '-rotate-1'}`}
               >
                 <div className="h-full min-h-40 overflow-hidden rounded-lg border-2 border-ink">
-                  <Photo photo={ph} seed={i + idx} />
+                  <Photo photo={ph} seed={i + idx} hint={import.meta.env.DEV ? `photos/mountains/${hike.id}/` : undefined} />
                 </div>
                 {ph.caption && <figcaption className="-mb-6 mt-1 text-center font-hand text-xl">{ph.caption}</figcaption>}
               </figure>
