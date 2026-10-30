@@ -157,7 +157,7 @@ const PORTALS: PortalDef[] = [
     world: 'brain',
     title: 'Explore My Brain',
     kicker: 'Data Science & Career',
-    blurb: 'Train a tiny AI, peek at my projects, see how I think.',
+    blurb: 'Ask my tiny AI what we should do together, peek at my projects, see how I think.',
     bg: 'bg-baby',
     text: 'text-ink',
     rotate: 'md:-rotate-1',

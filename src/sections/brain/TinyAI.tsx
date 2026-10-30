@@ -1,8 +1,9 @@
 import { useMemo, useRef, useState } from 'react'
 import { AnimatePresence, LayoutGroup, motion } from 'motion/react'
-import { Cloud, CloudRain, Dices, RotateCcw, Snowflake, Sparkles, Sun, Target, ThumbsDown, ThumbsUp } from 'lucide-react'
+import { Cloud, CloudRain, Dices, RotateCcw, Snowflake, Sparkles, Sun, Send, Target, ThumbsDown, ThumbsUp } from 'lucide-react'
 import { FEATURES, ITEMS, pick, scoreItems, type Pick, type Prefs, type Weather } from './tinyAi'
 import { confettiFrom } from '../../lib/confetti'
+import { links, site } from '../../data/content'
 
 const WEATHER: { id: Weather; label: string; icon: typeof Sun }[] = [
   { id: 'sunny', label: 'Sunny', icon: Sun },
@@ -15,7 +16,7 @@ const TIME = [
   { hours: 10, label: 'All day' },
 ]
 
-const DEFAULT_PREFS: Prefs = { adventure: 0.7, energy: 0.6, brainy: 0.4, social: 0.5 }
+const DEFAULT_PREFS: Prefs = { adventure: 0.85, energy: 0.8, brainy: 0.3, social: 0.3 }
 
 function Segmented<T extends string | number>({
   label, options, value, onChange,
@@ -54,7 +55,7 @@ function Segmented<T extends string | number>({
 export function TinyAI() {
   const [prefs, setPrefs] = useState<Prefs>(DEFAULT_PREFS)
   const [weather, setWeather] = useState<Weather>('sunny')
-  const [hours, setHours] = useState(3)
+  const [hours, setHours] = useState(10)
   const [epsilon, setEpsilon] = useState(0.2)
   const [bias, setBias] = useState<Record<string, number>>({})
   const [current, setCurrent] = useState<Pick | null>(null)
@@ -85,7 +86,7 @@ export function TinyAI() {
   }
 
   const reset = () => {
-    setPrefs(DEFAULT_PREFS); setWeather('sunny'); setHours(3); setEpsilon(0.2)
+    setPrefs(DEFAULT_PREFS); setWeather('sunny'); setHours(10); setEpsilon(0.2)
     setBias({}); setCurrent(null); setVoted(null)
     setStats({ explore: 0, exploit: 0, exploreLikes: 0, exploitLikes: 0 })
   }
@@ -101,7 +102,7 @@ export function TinyAI() {
           <span className="h-3 w-3 rounded-full bg-hot" />
           <span className="h-3 w-3 rounded-full bg-baby" />
           <span className="h-3 w-3 rounded-full bg-cream" />
-          <span className="ml-2">tiny_ai.recommend(you, context)</span>
+          <span className="ml-2">tiny_ai.what_should_we_do(you, yiyi, context)</span>
         </p>
         <button onClick={reset} className="inline-flex items-center gap-1 text-sm text-cream/70 hover:text-hot">
           <RotateCcw size={14} /> reset model
@@ -113,7 +114,7 @@ export function TinyAI() {
         <div className="space-y-6 border-b-2 border-ink bg-blush/80 p-5 lg:border-b-0 lg:border-r-2">
           <div>
             <p className="font-display text-2xl font-black">1. Tell it about you</p>
-            <p className="text-sm text-ink/60">These are your <b>features</b>, the numbers a model learns from.</p>
+            <p className="text-sm text-ink/60">How do you like to hang out? These are your <b>features</b>, the numbers a model learns from.</p>
           </div>
           {FEATURES.map((f) => (
             <label key={f.key} className="block">
@@ -170,9 +171,9 @@ export function TinyAI() {
         <div className="space-y-6 p-5">
           <div className="flex flex-wrap items-center gap-3">
             <button onClick={recommend} className="btn-hot text-lg">
-              <Sparkles size={18} /> Recommend my perfect day
+              <Sparkles size={18} /> What should we do together?
             </button>
-            <span className="font-hand text-xl text-berry">← then rate it so the model learns</span>
+            <span className="font-hand text-xl text-berry">← then rate it so the model learns your taste</span>
           </div>
 
           <div ref={cardRef} aria-live="polite">
@@ -212,6 +213,12 @@ export function TinyAI() {
                     <button onClick={() => vote('down')} disabled={!!voted} className="btn-cream !py-2" aria-label="I don't like this recommendation">
                       <ThumbsDown size={16} /> Nope
                     </button>
+                    <a
+                      href={`mailto:${links.email}?subject=${encodeURIComponent(`Let's do this: ${shown.item.name}`)}&body=${encodeURIComponent(`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in. When are you free?`)}`}
+                      className="btn-hot !py-2"
+                    >
+                      <Send size={16} /> Invite {site.name} ♡
+                    </a>
                     {voted && (
                       <motion.span initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="font-hand text-xl text-berry">
                         {voted === 'up'
@@ -226,7 +233,7 @@ export function TinyAI() {
                 </motion.div>
               ) : (
                 <motion.div key="empty" className="rounded-2xl border-2 border-dashed border-ink/30 p-6 text-center text-ink/60">
-                  <Cloud className="mx-auto mb-2 text-hot" /> The model is warmed up and waiting. Move the sliders, then hit the button.
+                  <Cloud className="mx-auto mb-2 text-hot" /> The model knows everything Yiyi loves doing. Tell it about you, then hit the button to find our perfect plan.
                 </motion.div>
               )}
             </AnimatePresence>

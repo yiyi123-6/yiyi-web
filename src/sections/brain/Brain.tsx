@@ -80,8 +80,8 @@ export function Brain() {
       </section>
 
       <section id="tiny-ai" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-20 md:px-8">
-        <SectionTitle eyebrow="interactive experiment" title={<>Train my <span className="italic text-hot">tiny AI.</span></>}>
-          A real (if very small) recommendation system that runs entirely in your browser. Tell it who you are today and it'll suggest your perfect day. Rate the pick and watch it learn.
+        <SectionTitle eyebrow="interactive experiment" title={<>What should we <span className="italic text-hot">do together?</span></>}>
+          Ask my tiny AI. It's a real (if very small) recommendation system that runs entirely in your browser and knows everything I love doing: hiking, snowboarding, lifting, boxing, data and startups. Tell it about you, and it'll match us with the perfect plan. Rate the pick to teach it, then send me the invite.
         </SectionTitle>
         <Reveal>
           <TinyAI />
