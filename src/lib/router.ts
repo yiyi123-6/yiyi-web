@@ -22,6 +22,18 @@ export function useHashRoute(): Route {
   return route
 }
 
+/** The part of the hash after the route, e.g. "add-photo" for #/mountains/add-photo. */
+export function useHashSubpath(): string {
+  const read = () => window.location.hash.replace(/^#\/?/, '').split('?')[0].split('/').slice(1).join('/')
+  const [sub, setSub] = useState(read)
+  useEffect(() => {
+    const onChange = () => setSub(read())
+    window.addEventListener('hashchange', onChange)
+    return () => window.removeEventListener('hashchange', onChange)
+  }, [])
+  return sub
+}
+
 export function href(route: Route) {
   return route === 'home' ? '#/' : `#/${route}`
 }

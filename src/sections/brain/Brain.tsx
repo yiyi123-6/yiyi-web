@@ -80,25 +80,25 @@ export function Brain() {
       </section>
 
       <section id="tiny-ai" className="mx-auto max-w-7xl scroll-mt-20 px-4 pb-20 md:px-8">
-        <SectionTitle eyebrow="interactive experiment" title={<>Train my <span className="italic text-hot">tiny AI.</span></>}>
-          A real (if very small) recommendation system that runs entirely in your browser. Tell it who you are today and it'll suggest your perfect day. Rate the pick and watch it learn.
+        <SectionTitle eyebrow="interactive experiment" title={<>What should we <span className="italic text-hot">do together?</span></>}>
+          Ask my tiny AI. It's a real (if very small) recommendation system that runs entirely in your browser and knows everything I love doing: hiking, snowboarding, lifting, boxing, data and startups. Tell it about you, and it'll match us with the perfect plan. Rate the pick to teach it, then send me the invite.
         </SectionTitle>
         <Reveal>
           <TinyAI />
         </Reveal>
       </section>
 
-      <Marquee className="bg-baby" items={['Machine learning', 'A/B testing', 'Recsys', 'Causal inference', 'Applied AI', 'Product thinking']} />
+      <Marquee className="bg-baby" items={['Machine learning', 'A/B testing', 'Customer segmentation', 'NLP', 'Feature engineering', 'Applied AI']} />
 
       <section className="mx-auto max-w-7xl px-4 py-20 md:px-8">
         <SectionTitle eyebrow="selected work" title="Projects in the lab.">
-          Real projects go here. Bracketed text is a placeholder until I fill it in.
+          A few favourites from past lives at Canadian Tire and TD Bank. Real work, real numbers.
         </SectionTitle>
         <div className="grid gap-6 md:grid-cols-3">
           {brain.projects.map((p, i) => (
             <Reveal key={i} delay={i * 0.08}>
               <article className={`sticker flex h-full flex-col bg-cream p-6 ${i === 1 ? 'md:translate-y-8' : ''}`}>
-                <p className="font-mono text-xs text-ink/50">PROJECT_{String(i + 1).padStart(2, '0')}</p>
+                <p className="font-mono text-xs uppercase text-ink/50">PROJECT_{String(i + 1).padStart(2, '0')}{p.org && ` · ${p.org}`}</p>
                 <h3 className="mt-2 font-display text-2xl font-black leading-tight"><Editable text={p.title} /></h3>
                 <p className="mt-3 flex-1 text-ink/75"><Editable text={p.blurb} /></p>
                 <p className="mt-4 rounded-xl bg-blush p-3 text-sm font-semibold"><Editable text={p.impact} /></p>
@@ -116,6 +116,34 @@ export function Brain() {
             </Reveal>
           ))}
         </div>
+      </section>
+
+      <section className="mx-auto max-w-7xl px-4 pb-20 md:px-8">
+        <SectionTitle eyebrow="career quest log" title={<>Levels <span className="italic text-hot">cleared.</span></>} />
+        <ol className="relative space-y-5 border-l-2 border-dashed border-ink/40 pl-6 md:pl-8">
+          {brain.experience.map((x, i) => (
+            <motion.li
+              key={x.role}
+              className="relative"
+              initial={{ opacity: 0, y: 28 }}
+              whileInView={{ opacity: 1, y: 0 }}
+              viewport={{ once: true, margin: '-60px' }}
+              transition={{ duration: 0.5, delay: i * 0.06 }}
+            >
+              <span aria-hidden className={`absolute -left-[33px] top-5 h-4 w-4 rounded-full border-2 border-ink md:-left-[41px] ${i === 0 ? 'bg-hot' : 'bg-cream'}`} />
+              <div className={`sticker flex flex-col gap-1 p-5 md:flex-row md:items-center md:gap-6 ${i === 0 ? 'bg-blush' : 'bg-cream'}`}>
+                <p className="font-mono text-xs uppercase text-ink/50 md:w-44 md:shrink-0">{x.when}</p>
+                <div className="min-w-0">
+                  <p className="font-display text-xl font-black leading-tight">
+                    {x.role}
+                    {x.org && <span className="text-hot"> @ {x.org}</span>}
+                  </p>
+                  <p className="mt-1 text-ink/75">{x.blurb}</p>
+                </div>
+              </div>
+            </motion.li>
+          ))}
+        </ol>
       </section>
 
       <section className="mx-auto grid max-w-7xl gap-8 px-4 pb-24 md:grid-cols-[1.3fr_1fr] md:px-8">
@@ -139,7 +167,7 @@ export function Brain() {
         <Reveal delay={0.1}>
           <div className="sticker h-full bg-cream p-6 md:p-8">
             <p className="eyebrow">trophy shelf</p>
-            <p className="font-display text-3xl font-black">Achievements</p>
+            <p className="font-display text-3xl font-black">Degrees & achievements</p>
             <ul className="mt-5 space-y-3">
               {brain.achievements.map((a, i) => (
                 <li key={i} className="flex items-start gap-3">

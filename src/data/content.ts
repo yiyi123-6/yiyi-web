@@ -23,13 +23,26 @@ export const site = {
 }
 
 export const links = {
-  email: 'hello@example.com', // ✎ your real email
+  email: 'yiyitan076@gmail.com',
+  /**
+   * Your Google Apps Script web-app URL (see scripts/invite-relay.gs). Invites are then sent
+   * from your Gmail to your Gmail. While '' the form opens the visitor's email app instead.
+   */
+  inviteScriptUrl: '',
   linkedin: 'https://www.linkedin.com/in/yiyitan',
   instagram: 'https://www.instagram.com/yosoy.ee/',
   instagramHandle: '@yosoy.ee',
   strava: 'https://strava.app.link/v8c5LpDF8Mb',
   github: 'https://github.com/your-handle', // ✎
   resume: '', // ✎ optional: 'files/resume.pdf' in /public/files — leave '' to hide
+}
+
+/** Theme song that starts on the visitor's first tap/click (browsers block sound before that). */
+export const music = {
+  title: "Life's What You Make It",
+  artist: 'Hannah Montana',
+  youtubeId: 'j-gwZgEgwq8', // official "Hannah Montana - Topic" audio
+  volume: 35, // 0–100
 }
 
 /** Real photos (from Instagram). Files live in /public/images/instagram. */
@@ -39,10 +52,20 @@ export const photos = {
   /** Photo dump shown on the About page. */
   gallery: [
     { src: 'images/instagram/seattle-cherry-blossom-1.webp', alt: 'Yiyi under cherry blossoms in Seattle', caption: 'miss the cherry blossoms in Seattle' },
+    { src: 'images/instagram/horseshoe-bend-3.webp', alt: 'Yiyi sitting on the rim of Horseshoe Bend', caption: '#horseshoebend' },
     { src: 'images/instagram/campus-1.webp', alt: 'Yiyi in a polka-dot dress by a tall window', caption: '🏫' },
+    { src: 'images/instagram/niagara-2.webp', alt: 'Yiyi on rocks above the turquoise Niagara River', caption: '#niagarafallscanada' },
     { src: 'images/instagram/las-vegas-1.webp', alt: 'Yiyi on the Las Vegas strip', caption: '#lasvegas' },
     { src: 'images/instagram/la-jolla-1.webp', alt: 'Yiyi in red at Cabrillo National Monument', caption: 'red fit, blue sky' },
+    { src: 'images/instagram/los-angeles-1.webp', alt: 'Yiyi looking out at the Hollywood sign', caption: '#losangeles' },
     { src: 'images/instagram/campus-3.webp', alt: 'Yiyi walking up a wooden staircase', caption: 'main character stairs' },
+    { src: 'images/instagram/la-jolla-3.webp', alt: 'Yiyi on a bench overlooking the Pacific', caption: '#lajollacove' },
+    { src: 'images/instagram/los-angeles-2.webp', alt: 'Yiyi on a giant red sofa', caption: 'sit down, it’s a big one' },
+    { src: 'images/instagram/seattle-cherry-blossom-2.webp', alt: 'Yiyi and a friend among cherry blossoms', caption: 'blossom season' },
+    { src: 'images/instagram/niagara-1.webp', alt: 'Yiyi above the Niagara gorge', caption: 'that colour is real' },
+    { src: 'images/instagram/campus-2.webp', alt: 'Yiyi on a staircase under a domed ceiling', caption: 'look up' },
+    { src: 'images/instagram/los-angeles-3.webp', alt: 'Yiyi by the Angels Flight railway', caption: 'angels flight' },
+    { src: 'images/instagram/las-vegas-2.webp', alt: 'The Welcome to Fabulous Las Vegas sign at night', caption: 'fabulous, obviously' },
     { src: 'images/instagram/beach-sunset.webp', alt: 'Yiyi walking on a beach at sunset', caption: '🏖️+🌅' },
   ] as Photo[],
 }
@@ -52,7 +75,7 @@ export const photos = {
 export const brain = {
   intro:
     'I turn messy data into decisions. My favourite problems sit where statistics, product intuition and a healthy amount of curiosity meet.',
-  role: 'Senior Data Scientist at [Company name]', // ✎
+  role: 'Senior Data Scientist',
   focusAreas: [
     { title: 'Machine Learning', blurb: 'Models that earn their place in production — interpretable when it matters, ambitious when it counts.', emoji: '🤖' },
     { title: 'Experimentation & A/B Testing', blurb: 'Designing tests that answer the real question, and having the patience to read them honestly.', emoji: '🧪' },
@@ -62,36 +85,47 @@ export const brain = {
     { title: 'Product Thinking', blurb: 'Starting with “what decision will this change?” before writing a single line of SQL.', emoji: '💡' },
   ],
   skills: [
-    'Python', 'SQL', 'Statistics', 'Causal inference', 'Experiment design', 'Recommender systems',
-    'Gradient boosting', 'Deep learning', 'LLMs', 'Feature engineering', 'Data storytelling', 'Stakeholder wrangling',
+    'Python', 'SQL', 'R', 'Java', 'JavaScript', 'GCP', 'Azure', 'Databricks', 'Spark', 'Hadoop',
+    'XGBoost', 'Neural networks', 'NLP', 'LLMs', 'Computer vision', 'A/B testing', 'Customer segmentation',
+    'Feature engineering', 'Tableau', 'Looker Studio',
   ],
   projects: [
     {
-      title: '[Project name — e.g. Recommendation engine]',
-      blurb: '[One or two sentences: the problem, your approach, and why it mattered.]',
-      tags: ['Recsys', 'Python', '[tag]'],
-      impact: '[Impact — add only real, shareable results]',
+      org: 'Canadian Tire',
+      title: 'A/B testing & segmentation on autopilot',
+      blurb: 'Production code that automates A/B testing and customer segmentation pipelines, fed by ETL on raw customer log data in Hive/GCP.',
+      tags: ['A/B testing', 'Segmentation', 'Python', 'GCP'],
+      impact: '−60% manual processing time',
       link: '', // optional GitHub / write-up URL
     },
     {
-      title: '[Project name — e.g. Experimentation platform]',
-      blurb: '[What you built, who used it, what changed because of it.]',
-      tags: ['A/B testing', 'Statistics', '[tag]'],
-      impact: '[Impact]',
+      org: 'Canadian Tire',
+      title: 'Predicting what customers do next',
+      blurb: 'Machine learning (hi, XGBoost) on customer traits to predict behaviour, so marketing campaigns reach the right people.',
+      tags: ['XGBoost', 'Prediction', 'Marketing'],
+      impact: '$1.4M incremental omnichannel sales lift · 5× ROI on a coffee campaign',
       link: '',
     },
     {
-      title: '[Project name — e.g. Applied AI prototype]',
-      blurb: '[A side project or work project you are proud of.]',
-      tags: ['LLMs', 'Product', '[tag]'],
-      impact: '[Impact]',
+      org: 'TD Bank',
+      title: 'Regulatory NLP & audit automation',
+      blurb: 'An NLP system that transforms regulatory data to meet Sarbanes–Oxley (SOX) requirements using 11+ methods, plus SQL that turned piles of raw audit data into an automated audit process.',
+      tags: ['NLP', 'SQL', 'Web scraping'],
+      impact: '−30% audit turnaround time',
       link: '',
     },
   ],
+  /** Career quest log, newest first. Leave `org` '' to show just the role. */
+  experience: [
+    { role: 'Senior Data Scientist', org: 'Homebase', when: '2026 – now', blurb: 'The current chapter: designing end-to-end machine learning systems.' },
+    { role: 'Data Scientist', org: 'Canadian Tire', when: 'May 2023 – Jul 2025', blurb: 'Production ML for A/B testing, customer segmentation and marketing campaigns.' },
+    { role: 'Data Science & Advanced Analytics', org: 'TD Bank', when: 'Jan – Apr 2023', blurb: 'NLP, web scraping and SQL to automate auditing and regulatory work.' },
+    { role: 'Data Engineer', org: 'HUAWEI Technologies', when: 'May – Dec 2021', blurb: 'Python clean-up of hundreds of Excel files (+25% efficiency), then a migration to SQL Server.' },
+  ],
   achievements: [
-    '[Achievement — e.g. talk, paper, award or promotion]',
-    '[Achievement]',
-    '[Achievement]',
+    'Master in Computer Science — Georgia Institute of Technology (2024)',
+    'HBSc, Double Major in Computer Science & Mathematics, Minor in Statistics — University of Toronto (2022)',
+    '4+ years designing end-to-end machine learning systems',
   ],
 }
 
@@ -241,10 +275,10 @@ export const about = {
   notOnResume: [
     { emoji: '🐱', title: 'My pets have their own Instagram', body: 'Meet my cat & dog over at @xiangx.jingx. They have more fans than I do.' },
     { emoji: '🏂', title: 'Multi-sport menace', body: 'Boxing, gymnastics, snowboarding, running, lifting. Find my runs on Strava.' },
-    { emoji: '🎧', title: '[Gym anthem]', body: '[The song that guarantees a PR.]' },
-    { emoji: '📍', title: '[Next place on the map]', body: '[Where you are dreaming of going next, and why.]' },
-    { emoji: '🧋', title: '[Order of choice]', body: '[Coffee? Matcha? Bubble tea with extra pearls?]' },
-    { emoji: '📖', title: '[Book that rewired you]', body: '[A book or idea you keep coming back to.]' },
+    { emoji: '🎧', title: 'Gym anthem: Stronger by Kanye West', body: "Work it, make it, do it, makes us harder, better, faster… stronger. Guaranteed PR.", youtubeId: 'PsO6ZnUZI0g' },
+    { emoji: '📍', title: 'Next place on the map', body: 'Somewhere warm~ ☀️ Sunshine, ocean, zero snow shovels. Suggestions welcome.' },
+    { emoji: '☕', title: 'My order', body: 'Decaf latte with oat milk. All the cozy, none of the 3am thoughts.' },
+    { emoji: '📖', title: 'The book that rewired me', body: 'The Courage to Be Disliked. Turns out freedom starts with not needing everyone to like you.' },
   ],
   /** Shown by the hidden “Plot Twist” button. */
   funFacts: [

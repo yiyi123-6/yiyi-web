@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Check, Copy, Mail, Send } from 'lucide-react'
+import { Check, Copy, Mail } from 'lucide-react'
 import { BackHome } from '../components/Bits'
+import { InviteForm } from '../components/InviteForm'
 import { GithubIcon, InstagramIcon, LinkedinIcon } from '../components/BrandIcons'
 import { connect, links, site } from '../data/content'
 
@@ -20,9 +21,6 @@ export function Connect() {
   }
 
   const signed = name.trim() ? `${message}\n\n— ${name.trim()}` : message
-  const mailto = option
-    ? `mailto:${links.email}?subject=${encodeURIComponent(option.subject)}&body=${encodeURIComponent(signed)}`
-    : `mailto:${links.email}`
 
   const copy = async () => {
     try {
@@ -94,21 +92,22 @@ export function Connect() {
                     className="mt-2 w-full resize-y rounded-2xl border-2 border-ink bg-blush p-4 text-lg leading-relaxed outline-none focus:bg-cream"
                   />
                 </label>
-                <label className="mt-3 block max-w-xs">
-                  <span className="text-sm font-bold uppercase tracking-wider text-ink/60">Sign it (optional)</span>
-                  <input
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Your name"
-                    className="mt-2 w-full rounded-full border-2 border-ink bg-cream px-4 py-2 outline-none focus:bg-blush"
+                <div className="mt-4">
+                  <InviteForm
+                    key={option.id}
+                    source="Connect page on Yiyi's Universe"
+                    subject={option.subject}
+                    message={message}
+                    onMessageChange={setMessage}
+                    showMessage={false}
+                    name={name}
+                    onNameChange={setName}
+                    tone="blush"
                   />
-                </label>
-                <div className="mt-6 flex flex-wrap gap-3">
-                  <a href={mailto} className="btn-hot"><Send size={18} /> Send it by email</a>
-                  <button onClick={copy} className="btn-cream">
-                    {copied ? <><Check size={18} /> Copied!</> : <><Copy size={18} /> Copy message</>}
-                  </button>
                 </div>
+                <button onClick={copy} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline-offset-2 hover:underline">
+                  {copied ? <><Check size={14} /> Copied!</> : <><Copy size={14} /> or copy the message</>}
+                </button>
               </div>
               <div className="relative flex flex-col justify-between gap-6 border-t-[3px] border-dashed border-ink bg-baby p-6 md:border-l-[3px] md:border-t-0">
                 <span className="absolute -left-4 -top-4 hidden h-8 w-8 rounded-full border-[3px] border-ink bg-berry md:block" aria-hidden />

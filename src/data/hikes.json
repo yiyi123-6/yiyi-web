@@ -1,28 +1,241 @@
 {
-  "_howTo": "Add an adventure by copying one object in `hikes` and editing it. Pins on the map are placed automatically from elevationGain. Photos go in /public/images (e.g. \"images/my-hike.webp\"); leave src empty for an illustrated placeholder. Distance/elevation values are approximate — replace them with your own Strava numbers.",
+  "_howTo": "Add an adventure by copying one object in `hikes` and editing it. Pins on the map are placed automatically from elevationGain. Photos go in /public/images (e.g. \"images/my-hike.webp\"); leave src empty for an illustrated placeholder. Hand-written distances are approximate — run `npm run import:garmin -- <Garmin export files>` to fill in real stats and elevation profiles (see README). The repo is public, so the importer never stores dates, start times or GPS coordinates; `date` is optional free text if you want one.",
   "units": { "distance": "km", "elevation": "m" },
   "hikes": [
     {
-      "id": "niagara",
-      "name": "Niagara Falls",
-      "location": "Niagara Falls, Ontario, Canada",
-      "date": "[Month Year]",
-      "distance": 5,
-      "elevationGain": 40,
+      "id": "gros-morne-mountain",
+      "name": "Gros Morne Mountain",
+      "location": "Gros Morne National Park, Newfoundland, Canada",
+      "distance": 18.6,
+      "elevationGain": 1614,
+      "difficulty": "Epic",
+      "photos": [
+        { "src": "", "alt": "Gros Morne Mountain", "caption": "#grosmorne" }
+      ],
+      "experience": "18.6 km and 1,614 m of climbing. The highest pin on the map.",
+      "takeaway": "Legs: tired. Data: excellent.",
+      "maxElevation": 824,
+      "movingTime": 14097,
+      "elapsedTime": 31012,
+      "profile": [16, 38, 66, 85, 98, 131, 150, 178, 190, 205, 232, 260, 302, 354, 335, 330, 322, 364, 443, 574, 663, 750, 772, 816, 788, 780, 784, 750, 741, 718, 692, 640, 607, 536, 543, 519, 488, 476, 467, 409, 354, 320, 323, 320, 325, 328, 343, 295, 251, 219, 193, 185, 167, 136, 118, 89, 69, 49, 22, 4],
+      "garminActivityId": "24264904668",
+      "source": "garmin"
+    },
+    {
+      "id": "woody-point-lookout",
+      "name": "Woody Point Lookout",
+      "location": "Woody Point, Bonne Bay, Newfoundland, Canada",
+      "distance": 6.6,
+      "elevationGain": 377,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Woody Point Lookout", "caption": "#woodypoint" }
+      ],
+      "experience": "6.6 km and 377 m of climbing. Straight up from Bonne Bay.",
+      "takeaway": "Steady steps add up.",
+      "maxElevation": 423,
+      "movingTime": 5487,
+      "elapsedTime": 8116,
+      "profile": [60, 67, 68, 72, 83, 97, 113, 129, 148, 162, 176, 184, 198, 218, 231, 248, 263, 280, 288, 292, 304, 317, 334, 347, 362, 374, 384, 396, 419, 416, 410, 399, 401, 395, 382, 367, 365, 371, 360, 348, 334, 318, 304, 287, 274, 261, 242, 226, 207, 189, 171, 159, 144, 128, 111, 98, 83, 70, 59, 55],
+      "garminActivityId": "24251768677",
+      "source": "garmin"
+    },
+    {
+      "id": "tablelands",
+      "name": "Tablelands",
+      "location": "Gros Morne National Park, Newfoundland, Canada",
+      "distance": 4.5,
+      "elevationGain": 95,
       "difficulty": "Easy",
       "photos": [
-        { "src": "images/instagram/niagara-1.webp", "alt": "Yiyi overlooking the Niagara River gorge", "caption": "#niagarafallscanada" },
-        { "src": "images/instagram/niagara-2.webp", "alt": "Yiyi sitting on rocks above turquoise water", "caption": "that colour is real" },
-        { "src": "images/instagram/niagara-3.webp", "alt": "Yiyi on the rocks by the Niagara River", "caption": "rock sitting champion" }
+        { "src": "", "alt": "Tablelands", "caption": "#tablelands" }
       ],
-      "experience": "[What was the day like? Who were you with? What surprised you?]",
-      "takeaway": "The view is better after the climb."
+      "experience": "4.5 km and 95 m of climbing. Out across the Tablelands.",
+      "takeaway": "Not every trail needs a summit.",
+      "maxElevation": 249,
+      "movingTime": 3546,
+      "elapsedTime": 5212,
+      "profile": [160, 162, 165, 170, 173, 176, 180, 185, 189, 190, 192, 195, 199, 205, 213, 221, 225, 228, 230, 230, 230, 232, 232, 232, 233, 231, 233, 236, 242, 244, 246, 243, 237, 234, 231, 232, 233, 233, 232, 231, 230, 230, 228, 225, 220, 213, 206, 200, 197, 194, 191, 188, 185, 181, 178, 175, 172, 168, 164, 163],
+      "garminActivityId": "24251769528",
+      "source": "garmin"
+    },
+    {
+      "id": "norris-point",
+      "name": "Norris Point",
+      "location": "Norris Point, Bonne Bay, Newfoundland, Canada",
+      "distance": 6.9,
+      "elevationGain": 162,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Norris Point", "caption": "#norrispoint" }
+      ],
+      "experience": "6.9 km and 162 m of climbing. Recorded in two pieces, stitched into one.",
+      "takeaway": "Bonne Bay, from both sides.",
+      "maxElevation": 106,
+      "movingTime": 3426,
+      "elapsedTime": 6798,
+      "profile": [98, 103, 103, 101, 93, 82, 76, 75, 81, 90, 100, 103, 104, 98, 94, 94, 89, 78, 69, 61, 53, 44, 30, 21, 19, 20, 20, 21, 21, 19, 18, 18, 17, 14, 14, 12, 8, 2, -3, -1, 3, 3, 2, 4, 5, 6, 11, 12, 8, 11, 7, 8, 25, 47, 62, 53, 29, 20, 9, 5],
+      "garminActivityId": "24285463185",
+      "garminActivityIds": ["24285463185", "24285934742"],
+      "source": "garmin"
+    },
+    {
+      "id": "devil-s-bridge",
+      "name": "Devil's Bridge",
+      "location": "Sedona, Arizona, USA",
+      "distance": 8.6,
+      "elevationGain": 290,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Devil's Bridge", "caption": "#devilsbridge" }
+      ],
+      "experience": "8.6 km and 290 m of climbing. All that climbing for one famous arch.",
+      "takeaway": "Worth every step.",
+      "maxElevation": 1524,
+      "movingTime": 6095,
+      "elapsedTime": 9734,
+      "profile": [1418, 1406, 1407, 1410, 1416, 1422, 1413, 1416, 1411, 1400, 1391, 1381, 1373, 1367, 1369, 1377, 1374, 1388, 1391, 1398, 1401, 1400, 1402, 1398, 1402, 1409, 1412, 1413, 1422, 1433, 1453, 1474, 1488, 1510, 1514, 1515, 1521, 1497, 1471, 1449, 1428, 1419, 1413, 1411, 1409, 1405, 1406, 1409, 1405, 1404, 1401, 1401, 1406, 1414, 1423, 1417, 1413, 1414, 1417, 1407],
+      "garminActivityId": "24690828654",
+      "source": "garmin"
+    },
+    {
+      "id": "cathedral-rock",
+      "name": "Cathedral Rock",
+      "location": "Sedona, Arizona, USA",
+      "distance": 2.6,
+      "elevationGain": 193,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Cathedral Rock", "caption": "#cathedralrock" }
+      ],
+      "experience": "2.6 km and 193 m of climbing. Short trail, steep math.",
+      "takeaway": "Short ≠ easy.",
+      "maxElevation": 1421,
+      "movingTime": 1778,
+      "elapsedTime": 5904,
+      "profile": [1234, 1237, 1240, 1244, 1249, 1253, 1259, 1264, 1267, 1274, 1282, 1296, 1309, 1321, 1336, 1345, 1354, 1360, 1364, 1374, 1379, 1389, 1397, 1412, 1414, 1417, 1418, 1418, 1417, 1418, 1418, 1418, 1418, 1420, 1416, 1405, 1393, 1384, 1379, 1370, 1363, 1354, 1346, 1340, 1333, 1324, 1309, 1296, 1284, 1276, 1270, 1267, 1261, 1255, 1250, 1245, 1241, 1239, 1237, 1239],
+      "garminActivityId": "24677049385",
+      "source": "garmin"
+    },
+    {
+      "id": "subway-cave",
+      "name": "Subway Cave",
+      "location": "Boynton Canyon, Sedona, Arizona, USA",
+      "distance": 9.2,
+      "elevationGain": 231,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Subway Cave", "caption": "#subwaycave" }
+      ],
+      "experience": "9.2 km and 231 m of climbing. Up Boynton Canyon to the cave.",
+      "takeaway": "Follow the canyon, find the cave.",
+      "maxElevation": 1530,
+      "movingTime": 6312,
+      "elapsedTime": 10970,
+      "profile": [1389, 1382, 1382, 1384, 1390, 1392, 1397, 1407, 1419, 1417, 1419, 1418, 1416, 1413, 1410, 1415, 1417, 1420, 1431, 1436, 1440, 1444, 1448, 1461, 1469, 1486, 1504, 1518, 1519, 1521, 1523, 1525, 1528, 1508, 1496, 1483, 1471, 1464, 1455, 1455, 1449, 1443, 1435, 1429, 1428, 1422, 1421, 1425, 1428, 1426, 1426, 1428, 1424, 1408, 1399, 1397, 1389, 1385, 1382, 1391],
+      "garminActivityId": "24678863809",
+      "source": "garmin"
+    },
+    {
+      "id": "chapel-trail",
+      "name": "Chapel Trail",
+      "location": "Sedona, Arizona, USA",
+      "distance": 7.3,
+      "elevationGain": 257,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Chapel Trail", "caption": "#chapeltrail" }
+      ],
+      "experience": "7.3 km and 257 m of climbing.",
+      "takeaway": "Steady steps add up.",
+      "maxElevation": 1413,
+      "movingTime": 5236,
+      "elapsedTime": 8906,
+      "profile": [1339, 1339, 1339, 1337, 1334, 1330, 1329, 1324, 1318, 1321, 1321, 1324, 1334, 1327, 1321, 1325, 1337, 1348, 1353, 1357, 1360, 1366, 1370, 1379, 1385, 1379, 1381, 1382, 1386, 1379, 1373, 1379, 1384, 1391, 1392, 1394, 1396, 1397, 1407, 1412, 1407, 1408, 1407, 1403, 1391, 1379, 1370, 1358, 1348, 1346, 1346, 1357, 1366, 1371, 1375, 1365, 1351, 1355, 1348, 1346],
+      "garminActivityId": "24701992832",
+      "source": "garmin"
+    },
+    {
+      "id": "bell-rock-pathway",
+      "name": "Bell Rock Pathway",
+      "location": "Sedona, Arizona, USA",
+      "distance": 8.8,
+      "elevationGain": 155,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Bell Rock Pathway", "caption": "#bellrock" }
+      ],
+      "experience": "8.8 km and 155 m of climbing. Along the red rocks from Bell Rock.",
+      "takeaway": "Every trail counts.",
+      "maxElevation": 1412,
+      "movingTime": 1832,
+      "elapsedTime": 5128,
+      "profile": [1351, 1359, 1375, 1384, 1393, 1409, 1400, 1403, 1379, 1357, 1343, 1333, 1328, 1325, 1321, 1324, 1325, 1313, 1302, 1301, 1300, 1302, 1306, 1302, 1292, 1291, 1290, 1284, 1278, 1283, 1295, 1297, 1299, 1299, 1294, 1289, 1295, 1299, 1304, 1304, 1301, 1295, 1288, 1280, 1276, 1278, 1278, 1274, 1268, 1267, 1269, 1271, 1272, 1279, 1284, 1288, 1291, 1290, 1293, 1299],
+      "garminActivityId": "24675629717",
+      "source": "garmin"
+    },
+    {
+      "id": "bell-rock-loop",
+      "name": "Bell Rock Loop",
+      "location": "Sedona, Arizona, USA",
+      "distance": 4.9,
+      "elevationGain": 162,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Bell Rock Loop", "caption": "#bellrock" }
+      ],
+      "experience": "4.9 km and 162 m of climbing. A second lap around Bell Rock.",
+      "takeaway": "Some rocks deserve a second visit.",
+      "maxElevation": 1391,
+      "movingTime": 3868,
+      "elapsedTime": 8060,
+      "profile": [1275, 1274, 1276, 1277, 1279, 1281, 1285, 1289, 1294, 1295, 1296, 1297, 1297, 1299, 1301, 1299, 1298, 1298, 1300, 1304, 1312, 1321, 1321, 1320, 1331, 1336, 1342, 1348, 1344, 1344, 1354, 1371, 1383, 1387, 1379, 1355, 1342, 1333, 1333, 1329, 1330, 1324, 1320, 1316, 1311, 1305, 1298, 1291, 1288, 1283, 1279, 1274, 1271, 1270, 1267, 1264, 1263, 1264, 1265, 1268],
+      "garminActivityId": "24689433423",
+      "source": "garmin"
+    },
+    {
+      "id": "west-sedona",
+      "name": "West Sedona",
+      "location": "Sedona, Arizona, USA",
+      "distance": 5,
+      "elevationGain": 159,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "West Sedona", "caption": "#sedona" }
+      ],
+      "experience": "5 km and 159 m of climbing. Recorded in two pieces, stitched into one.",
+      "takeaway": "Seven Sedona trails and counting.",
+      "maxElevation": 1497,
+      "movingTime": 2990,
+      "elapsedTime": 8169,
+      "profile": [1404, 1409, 1410, 1393, 1399, 1407, 1412, 1413, 1413, 1416, 1422, 1426, 1428, 1428, 1428, 1426, 1425, 1423, 1419, 1414, 1416, 1422, 1428, 1437, 1451, 1465, 1481, 1492, 1481, 1463, 1447, 1431, 1423, 1417, 1410, 1403, 1401, 1401, 1403, 1398, 1389, 1382, 1382, 1385, 1387, 1384, 1379, 1377, 1377, 1380, 1384, 1387, 1386, 1382, 1377, 1372, 1368, 1363, 1365, 1365],
+      "garminActivityId": "24727223646",
+      "garminActivityIds": ["24709485536", "24727223646"],
+      "source": "garmin"
+    },
+    {
+      "id": "grand-canyon-south-rim",
+      "name": "Grand Canyon South Rim",
+      "location": "Grand Canyon National Park, Arizona, USA",
+      "distance": 2.6,
+      "elevationGain": 32,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Grand Canyon South Rim", "caption": "#grandcanyon" }
+      ],
+      "experience": "2.6 km and 32 m of climbing. Along the rim, at about 2,170 m above sea level.",
+      "takeaway": "Highest ground on this list.",
+      "maxElevation": 2174,
+      "movingTime": 1806,
+      "elapsedTime": 3249,
+      "profile": [2149, 2150, 2152, 2153, 2153, 2154, 2150, 2151, 2152, 2152, 2153, 2155, 2157, 2160, 2162, 2162, 2163, 2165, 2164, 2164, 2165, 2166, 2167, 2168, 2169, 2170, 2170, 2170, 2171, 2172, 2173, 2172, 2172, 2172, 2172, 2173, 2173, 2172, 2172, 2172, 2171, 2171, 2171, 2170, 2169, 2168, 2168, 2168, 2168, 2167, 2165, 2165, 2163, 2161, 2159, 2157, 2156, 2157, 2158, 2158],
+      "garminActivityId": "22275980577",
+      "source": "garmin"
     },
     {
       "id": "horseshoe-bend",
       "name": "Horseshoe Bend",
       "location": "Page, Arizona, USA",
-      "date": "[Month Year]",
       "distance": 2.4,
       "elevationGain": 60,
       "difficulty": "Easy",
@@ -35,12 +248,30 @@
       "takeaway": "[Your personal takeaway]"
     },
     {
+      "id": "zion-canyon",
+      "name": "Zion Canyon",
+      "location": "Zion National Park, Utah, USA",
+      "distance": 3.2,
+      "elevationGain": 25,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Zion Canyon", "caption": "#zion" }
+      ],
+      "experience": "3.2 km and 25 m of climbing. Easy miles on the canyon floor.",
+      "takeaway": "Every trail counts.",
+      "maxElevation": 1211,
+      "movingTime": 2114,
+      "elapsedTime": 3303,
+      "profile": [1193, 1193, 1194, 1195, 1192, 1190, 1191, 1193, 1193, 1195, 1196, 1197, 1198, 1198, 1198, 1199, 1200, 1201, 1202, 1201, 1202, 1204, 1206, 1207, 1207, 1207, 1207, 1208, 1209, 1209, 1209, 1208, 1208, 1207, 1208, 1208, 1208, 1208, 1206, 1205, 1204, 1204, 1203, 1202, 1201, 1200, 1200, 1200, 1200, 1199, 1198, 1196, 1196, 1197, 1197, 1196, 1195, 1194, 1194, 1194],
+      "garminActivityId": "22267230225",
+      "source": "garmin"
+    },
+    {
       "id": "la-jolla-cabrillo",
       "name": "La Jolla Cove & Cabrillo",
       "location": "San Diego, California, USA",
-      "date": "[Month Year]",
-      "distance": 6,
-      "elevationGain": 120,
+      "distance": 3.5,
+      "elevationGain": 110,
       "difficulty": "Moderate",
       "photos": [
         { "src": "images/instagram/la-jolla-1.webp", "alt": "Yiyi in a red outfit at Cabrillo National Monument", "caption": "#cabrillonationalmonument" },
@@ -48,13 +279,18 @@
         { "src": "images/instagram/la-jolla-3.webp", "alt": "Yiyi on a bench overlooking the ocean", "caption": "bench with a view" }
       ],
       "experience": "[Sea lions? Tide pools? Sunset? Tell the story.]",
-      "takeaway": "[Your personal takeaway]"
+      "takeaway": "[Your personal takeaway]",
+      "maxElevation": 126,
+      "movingTime": 2562,
+      "elapsedTime": 3277,
+      "profile": [111, 111, 113, 116, 121, 122, 120, 118, 113, 109, 104, 102, 98, 92, 85, 78, 72, 67, 65, 64, 63, 63, 62, 58, 55, 52, 48, 45, 41, 36, 32, 29, 29, 29, 31, 34, 39, 43, 46, 50, 53, 58, 61, 63, 64, 65, 67, 71, 75, 81, 88, 95, 100, 104, 108, 112, 117, 120, 123, 124],
+      "garminActivityId": "22320561809",
+      "source": "garmin"
     },
     {
       "id": "los-angeles",
       "name": "Hollywood Hills",
       "location": "Los Angeles, California, USA",
-      "date": "[Month Year]",
       "distance": 8,
       "elevationGain": 300,
       "difficulty": "Moderate",
@@ -65,6 +301,155 @@
       ],
       "experience": "[What did you explore in LA?]",
       "takeaway": "[Your personal takeaway]"
+    },
+    {
+      "id": "niagara",
+      "name": "Niagara Falls",
+      "location": "Niagara Falls, Ontario, Canada",
+      "distance": 5,
+      "elevationGain": 40,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "images/instagram/niagara-1.webp", "alt": "Yiyi overlooking the Niagara River gorge", "caption": "#niagarafallscanada" },
+        { "src": "images/instagram/niagara-2.webp", "alt": "Yiyi sitting on rocks above turquoise water", "caption": "that colour is real" },
+        { "src": "images/instagram/niagara-3.webp", "alt": "Yiyi on the rocks by the Niagara River", "caption": "rock sitting champion" }
+      ],
+      "experience": "[What was the day like? Who were you with? What surprised you?]",
+      "takeaway": "The view is better after the climb."
+    },
+    {
+      "id": "caledon-hills",
+      "name": "Caledon Hills",
+      "location": "Caledon, Ontario, Canada",
+      "distance": 4.8,
+      "elevationGain": 106,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Caledon Hills", "caption": "#caledon" }
+      ],
+      "experience": "4.8 km and 106 m of climbing.",
+      "takeaway": "Two pieces, one adventure.",
+      "maxElevation": 394,
+      "movingTime": 3357,
+      "elapsedTime": 6267,
+      "profile": [336, 331, 323, 321, 327, 333, 338, 345, 347, 345, 342, 338, 333, 332, 331, 328, 326, 324, 319, 312, 312, 320, 324, 326, 328, 330, 328, 331, 335, 339, 342, 345, 346, 349, 354, 356, 354, 348, 344, 343, 342, 335, 334, 341, 342, 344, 342, 385, 384, 385, 385, 385, 384, 385, 385, 383, 383, 384, 391, 392],
+      "garminActivityId": "24850495587",
+      "garminActivityIds": ["24850495587", "24850496249"],
+      "source": "garmin"
+    },
+    {
+      "id": "toronto-waterfront-trail",
+      "name": "Toronto Waterfront Trail",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 20.1,
+      "elevationGain": 180,
+      "difficulty": "Hard",
+      "photos": [
+        { "src": "", "alt": "Toronto Waterfront Trail", "caption": "#torontowaterfront" }
+      ],
+      "experience": "20.1 km and 180 m of climbing. Along Lake Ontario: the longest walk on the list.",
+      "takeaway": "Flat doesn't mean short.",
+      "maxElevation": 89,
+      "movingTime": 16240,
+      "elapsedTime": 22161,
+      "profile": [79, 74, 70, 77, 80, 76, 76, 80, 80, 76, 73, 74, 77, 82, 78, 76, 80, 78, 77, 78, 81, 82, 82, 83, 82, 76, 75, 75, 76, 76, 72, 64, 86, 84, 82, 80, 77, 76, 74, 73, 83, 82, 86, 88, 80, 85, 85, 83, 82, 83, 82, 81, 86, 88, 87, 88, 87, 87, 87, 87],
+      "garminActivityId": "24522647448",
+      "source": "garmin"
+    },
+    {
+      "id": "humber-river-valley",
+      "name": "Humber River Valley",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 9.4,
+      "elevationGain": 76,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Humber River Valley", "caption": "#humberriver" }
+      ],
+      "experience": "9.4 km and 76 m of climbing. Following the Humber River.",
+      "takeaway": "Steady steps add up.",
+      "maxElevation": 126,
+      "movingTime": 7493,
+      "elapsedTime": 10418,
+      "profile": [124, 123, 125, 123, 109, 108, 110, 108, 108, 105, 107, 119, 119, 115, 115, 116, 115, 110, 106, 103, 99, 98, 96, 97, 95, 96, 96, 101, 98, 95, 94, 99, 96, 98, 97, 96, 96, 95, 93, 92, 91, 89, 88, 87, 87, 86, 85, 82, 83, 81, 79, 79, 77, 75, 76, 80, 76, 74, 84, 88],
+      "garminActivityId": "23321784065",
+      "source": "garmin"
+    },
+    {
+      "id": "tommy-thompson-park",
+      "name": "Tommy Thompson Park",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 6.5,
+      "elevationGain": 14,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Tommy Thompson Park", "caption": "#tommythompsonpark" }
+      ],
+      "experience": "6.5 km and 14 m of climbing. Out on the Leslie Street Spit.",
+      "takeaway": "Flattest hike on the list.",
+      "maxElevation": 82,
+      "movingTime": 4571,
+      "elapsedTime": 6907,
+      "profile": [78, 78, 78, 79, 80, 81, 80, 78, 78, 79, 79, 79, 79, 79, 79, 79, 79, 79, 79, 79, 79, 79, 79, 77, 77, 76, 75, 75, 75, 75, 75, 75, 79, 79, 80, 80, 80, 80, 80, 80, 80, 80, 80, 80, 81, 81, 81, 81, 80, 79, 79, 79, 80, 79, 78, 79, 79, 78, 78, 78],
+      "garminActivityId": "23080541849",
+      "source": "garmin"
+    },
+    {
+      "id": "toronto-ravines",
+      "name": "Toronto Ravines",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 6.7,
+      "elevationGain": 92,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Toronto Ravines", "caption": "#toronto" }
+      ],
+      "experience": "6.7 km and 92 m of climbing. Green tunnels in the middle of the city.",
+      "takeaway": "City trails count too.",
+      "maxElevation": 122,
+      "movingTime": 5375,
+      "elapsedTime": 6674,
+      "profile": [88, 87, 84, 85, 85, 83, 82, 81, 81, 82, 82, 83, 93, 101, 106, 106, 107, 96, 84, 83, 84, 84, 84, 84, 83, 83, 81, 80, 80, 80, 81, 82, 86, 88, 85, 90, 99, 110, 118, 121, 121, 120, 119, 119, 119, 116, 116, 115, 115, 114, 115, 115, 114, 114, 114, 110, 110, 111, 111, 110],
+      "garminActivityId": "22905555858",
+      "source": "garmin"
+    },
+    {
+      "id": "toronto-ravines-round-2",
+      "name": "Toronto Ravines, Round 2",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 8.2,
+      "elevationGain": 132,
+      "difficulty": "Moderate",
+      "photos": [
+        { "src": "", "alt": "Toronto Ravines, Round 2", "caption": "#toronto" }
+      ],
+      "experience": "8.2 km and 132 m of climbing. Back for more ravine.",
+      "takeaway": "Steady steps add up.",
+      "maxElevation": 123,
+      "movingTime": 6207,
+      "elapsedTime": 8912,
+      "profile": [110, 110, 112, 112, 113, 100, 86, 80, 81, 78, 78, 80, 85, 88, 91, 93, 95, 98, 98, 87, 82, 82, 79, 79, 81, 81, 81, 85, 87, 96, 109, 111, 111, 113, 105, 87, 84, 84, 83, 82, 81, 78, 78, 78, 79, 83, 85, 84, 97, 116, 121, 120, 122, 122, 121, 119, 120, 120, 118, 113],
+      "garminActivityId": "24838586217",
+      "source": "garmin"
+    },
+    {
+      "id": "ravines-to-downtown",
+      "name": "Ravines to Downtown",
+      "location": "Toronto, Ontario, Canada",
+      "distance": 4.8,
+      "elevationGain": 48,
+      "difficulty": "Easy",
+      "photos": [
+        { "src": "", "alt": "Ravines to Downtown", "caption": "#toronto" }
+      ],
+      "experience": "4.8 km and 48 m of climbing. From the ravines into downtown.",
+      "takeaway": "Every trail counts.",
+      "maxElevation": 100,
+      "movingTime": 3974,
+      "elapsedTime": 4547,
+      "profile": [93, 89, 84, 80, 78, 77, 78, 79, 89, 84, 80, 79, 81, 83, 84, 80, 76, 77, 86, 96, 97, 97, 97, 98, 97, 97, 98, 98, 99, 99, 98, 98, 97, 96, 94, 94, 93, 94, 94, 92, 91, 91, 89, 88, 87, 87, 87, 86, 86, 86, 87, 87, 88, 88, 88, 87, 86, 86, 85, 83],
+      "garminActivityId": "24055480605",
+      "source": "garmin"
     }
   ],
   "dreams": [

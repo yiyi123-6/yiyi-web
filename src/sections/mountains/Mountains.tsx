@@ -1,17 +1,48 @@
-import { useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { ChevronLeft, ChevronRight, Footprints, MapPin, Mountain, TrendingUp } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Clock, Footprints, MapPin, Mountain, MountainSnow, TrendingUp } from 'lucide-react'
 import { BackHome, Reveal, SectionTitle } from '../../components/Bits'
 import { Editable } from '../../components/Editable'
 import { Photo } from '../../components/Photo'
-import { site } from '../../data/content'
+import { site, type Photo as PhotoT } from '../../data/content'
 import data from '../../data/hikes.json'
+import { photosForHike, useLivePhotoFiles } from '../../lib/hikePhotos'
+import { useHashSubpath } from '../../lib/router'
 import { useUniverse } from '../../lib/universe'
 
-type Hike = (typeof data.hikes)[number]
-const { hikes, dreams, units } = data
+/** Shape of an entry in hikes.json. Everything after `takeaway` is optional and filled in by `npm run import:garmin`. */
+interface Hike {
+  id: string
+  name: string
+  location: string
+  /** Optional free text ("Summer 2025"). Garmin imports never write it: the repo is public. */
+  date?: string
+  distance: number
+  elevationGain: number
+  difficulty: string
+  photos: PhotoT[]
+  experience: string
+  takeaway: string
+  maxElevation?: number
+  /** seconds */
+  movingTime?: number
+  /** seconds */
+  elapsedTime?: number
+  /** elevations along the trail, evenly spaced by distance */
+  profile?: number[]
+  garminActivityId?: string
+  /** set when one outing was recorded as several Garmin activities and merged */
+  garminActivityIds?: string[]
+  source?: string
+}
+
+const hikes = data.hikes as Hike[]
+const { dreams, units } = data
 
 const DIFFICULTY: Record<string, number> = { Easy: 1, Moderate: 2, Hard: 3, Epic: 4 }
+/** Past this many hikes the map switches to numbered pins and gets wide enough to scroll on small screens. */
+const DENSE = 8
+const PIN_SPACING_PX = 46
 
 function hash(s: string) {
   let h = 2166136261
@@ -31,6 +62,25 @@ function profilePath(h: Hike, w = 300, ht = 80) {
     return [t * w, ht - 6 - v * (ht - 14)] as const
   })
   return pts.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`).join(' ')
+}
+
+/** The recorded elevation profile, scaled to fit the same box. */
+function realProfilePath(profile: number[], w = 300, ht = 80) {
+  const lo = Math.min(...profile)
+  const range = Math.max(Math.max(...profile) - lo, 1)
+  return profile
+    .map((e, i) => {
+      const x = (i / Math.max(1, profile.length - 1)) * w
+      const y = ht - 6 - ((e - lo) / range) * (ht - 14)
+      return `${i ? 'L' : 'M'}${x.toFixed(1)},${y.toFixed(1)}`
+    })
+    .join(' ')
+}
+
+function formatDuration(sec: number) {
+  const h = Math.floor(sec / 3600)
+  const m = Math.round((sec % 3600) / 60)
+  return h ? `${h}h ${String(m).padStart(2, '0')}m` : `${m}m`
 }
 
 function GrowingRange() {
@@ -131,17 +181,29 @@ function catmull(points: { x: number; y: number }[]) {
 
 function SummitQuest() {
   const [idx, setIdx] = useState(0)
+  const mapRef = useRef<HTMLDivElement>(null)
   const W = 1000, H = 420
-  const maxEl = Math.max(...hikes.map((h) => h.elevationGain), 1)
+  const dense = hikes.length > DENSE
+  // sqrt so one huge day doesn't flatten every other pin onto the floor
+  const maxEl = Math.sqrt(Math.max(...hikes.map((h) => h.elevationGain), 1))
   const pins = hikes.map((h, i) => ({
     x: 80 + (i * (W - 160)) / Math.max(1, hikes.length - 1),
-    y: H - 70 - (h.elevationGain / maxEl) * (H - 160),
+    y: H - 70 - (Math.sqrt(Math.max(0, h.elevationGain)) / maxEl) * (H - 160),
   }))
   const trail = catmull([{ x: 10, y: H - 30 }, ...pins, { x: W - 10, y: pins[pins.length - 1]?.y ?? H / 2 }])
   const hike = hikes[idx]
+  const livePhotos = useLivePhotoFiles()
+  const photos = photosForHike(hike.id, hike.photos, livePhotos)
+  const label = (h: Hike) => h.name.replace(/[[\]]/g, '')
 
   const totalKm = hikes.reduce((s, h) => s + h.distance, 0)
   const totalEl = hikes.reduce((s, h) => s + h.elevationGain, 0)
+
+  useEffect(() => {
+    const el = mapRef.current
+    if (!el || el.scrollWidth <= el.clientWidth) return
+    el.scrollTo({ left: (pins[idx].x / W) * el.scrollWidth - el.clientWidth / 2, behavior: 'smooth' })
+  }, [idx])
 
   return (
     <section className="mx-auto max-w-7xl px-4 py-20 md:px-8">
@@ -168,50 +230,95 @@ function SummitQuest() {
 
       <div className="sticker relative overflow-hidden bg-baby">
         <div className="grid-paper absolute inset-0 opacity-70" aria-hidden />
-        <div className="relative aspect-[1000/420] w-full min-h-[260px]">
-          <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden>
-            <path d={`M0 ${H} L150 220 L260 300 L420 140 L560 260 L720 110 L860 230 L1000 160 L1000 ${H} Z`} fill="#FF4FA3" opacity=".18" />
-            <path d={`M0 ${H} L120 300 L300 340 L480 250 L640 330 L820 270 L1000 320 L1000 ${H} Z`} fill="#8B1E55" opacity=".18" />
-            <path d={trail} fill="none" stroke="#FFFDF8" strokeWidth="14" strokeLinecap="round" />
-            <motion.path
-              d={trail}
-              fill="none"
-              stroke="#21151D"
-              strokeWidth="4"
-              strokeDasharray="2 14"
-              strokeLinecap="round"
-              initial={{ pathLength: 0 }}
-              whileInView={{ pathLength: 1 }}
-              viewport={{ once: true }}
-              transition={{ duration: 2 }}
-            />
-          </svg>
-          {pins.map((p, i) => {
-            const on = i === idx
-            return (
-              <motion.button
-                key={hikes[i].id}
-                onClick={() => setIdx(i)}
-                aria-pressed={on}
-                aria-label={`${hikes[i].name.replace(/[[\]]/g, '')}: ${hikes[i].distance} ${units.distance}, ${hikes[i].elevationGain} ${units.elevation} gain`}
-                className="absolute -translate-x-1/2 -translate-y-full"
-                style={{ left: `${(p.x / W) * 100}%`, top: `${(p.y / H) * 100}%` }}
-                whileHover={{ y: -6, scale: 1.08 }}
-                whileTap={{ scale: 0.95 }}
-              >
-                <span className={`flex flex-col items-center ${on ? '' : 'opacity-90'}`}>
-                  <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2.5 py-1 text-xs font-bold shadow-[var(--shadow-sticker)] md:text-sm ${on ? 'bg-ink text-cream' : 'bg-cream'}`}>
-                    {i + 1}<span className={on ? 'hidden sm:inline' : 'hidden md:inline'}>. {hikes[i].name.replace(/[[\]]/g, '')}</span>
-                  </span>
-                  <span className={`mt-1 grid h-9 w-9 place-items-center rounded-full border-2 border-ink text-lg ${on ? 'bg-hot' : 'bg-cream'}`}>
-                    {on ? '🚩' : '⛰️'}
-                  </span>
-                </span>
-              </motion.button>
-            )
-          })}
+        <div ref={mapRef} className="relative overflow-x-auto overscroll-x-contain">
+          <div
+            className="relative aspect-[1000/420] w-full min-h-[260px]"
+            style={dense ? { minWidth: `${hikes.length * PIN_SPACING_PX}px` } : undefined}
+          >
+            <svg viewBox={`0 0 ${W} ${H}`} className="absolute inset-0 h-full w-full" preserveAspectRatio="none" aria-hidden>
+              <path d={`M0 ${H} L150 220 L260 300 L420 140 L560 260 L720 110 L860 230 L1000 160 L1000 ${H} Z`} fill="#FF4FA3" opacity=".18" />
+              <path d={`M0 ${H} L120 300 L300 340 L480 250 L640 330 L820 270 L1000 320 L1000 ${H} Z`} fill="#8B1E55" opacity=".18" />
+              <path d={trail} fill="none" stroke="#FFFDF8" strokeWidth="14" strokeLinecap="round" />
+              <motion.path
+                d={trail}
+                fill="none"
+                stroke="#21151D"
+                strokeWidth="4"
+                strokeDasharray="2 14"
+                strokeLinecap="round"
+                initial={{ pathLength: 0 }}
+                whileInView={{ pathLength: 1 }}
+                viewport={{ once: true }}
+                transition={{ duration: 2 }}
+              />
+            </svg>
+            {pins.map((p, i) => {
+              const on = i === idx
+              const h = hikes[i]
+              const edge = p.x < W * 0.2 ? 'left-0' : p.x > W * 0.8 ? 'right-0' : 'left-1/2 -translate-x-1/2'
+              return (
+                <motion.button
+                  key={h.id}
+                  onClick={() => setIdx(i)}
+                  aria-pressed={on}
+                  aria-label={`${label(h)}: ${h.distance} ${units.distance}, ${h.elevationGain} ${units.elevation} gain`}
+                  className={`absolute -translate-x-1/2 -translate-y-full ${on ? 'z-10' : ''}`}
+                  style={{ left: `${(p.x / W) * 100}%`, top: `${(p.y / H) * 100}%` }}
+                  whileHover={{ y: -6, scale: 1.08 }}
+                  whileTap={{ scale: 0.95 }}
+                >
+                  {dense ? (
+                    <span className="relative block">
+                      {on && (
+                        <span className={`absolute bottom-full mb-1 whitespace-nowrap rounded-full border-2 border-ink bg-ink px-2.5 py-1 text-xs font-bold text-cream shadow-[var(--shadow-sticker)] md:text-sm ${edge}`}>
+                          {i + 1}. {label(h)}
+                        </span>
+                      )}
+                      <span
+                        className={`grid h-8 w-8 place-items-center rounded-full border-2 border-ink text-xs font-black shadow-[2px_2px_0_0_#21151D] ${on ? 'bg-hot text-base' : 'bg-cream'}`}
+                        title={label(h)}
+                      >
+                        {on ? '🚩' : i + 1}
+                      </span>
+                    </span>
+                  ) : (
+                    <span className={`flex flex-col items-center ${on ? '' : 'opacity-90'}`}>
+                      <span className={`whitespace-nowrap rounded-full border-2 border-ink px-2.5 py-1 text-xs font-bold shadow-[var(--shadow-sticker)] md:text-sm ${on ? 'bg-ink text-cream' : 'bg-cream'}`}>
+                        {i + 1}<span className={on ? 'hidden sm:inline' : 'hidden md:inline'}>. {label(h)}</span>
+                      </span>
+                      <span className={`mt-1 grid h-9 w-9 place-items-center rounded-full border-2 border-ink text-lg ${on ? 'bg-hot' : 'bg-cream'}`}>
+                        {on ? '🚩' : '⛰️'}
+                      </span>
+                    </span>
+                  )}
+                </motion.button>
+              )
+            })}
+          </div>
         </div>
       </div>
+      {dense && (
+        <p className="mt-2 text-xs font-bold uppercase tracking-wider text-ink/50 lg:hidden">← swipe the trail →</p>
+      )}
+
+      {dense && (
+        <nav aria-label="All trails" className="-mx-4 mt-4 overflow-x-auto px-4 md:mx-0 md:overflow-visible md:px-0">
+          <ol className="flex gap-2 md:flex-wrap">
+            {hikes.map((h, i) => (
+              <li key={h.id} className="shrink-0">
+                <button
+                  onClick={() => setIdx(i)}
+                  aria-current={i === idx}
+                  className={`whitespace-nowrap rounded-full border-2 border-ink px-3 py-1 text-xs font-bold transition hover:-translate-y-0.5 ${i === idx ? 'bg-ink text-cream' : 'bg-cream'}`}
+                >
+                  <span className={i === idx ? 'text-baby' : 'text-hot'}>{i + 1}</span> {label(h)}
+                  <span className="ml-1 font-semibold opacity-60">{h.distance} {units.distance}</span>
+                </button>
+              </li>
+            ))}
+          </ol>
+        </nav>
+      )}
 
       <AnimatePresence mode="wait">
         <motion.article
@@ -225,7 +332,7 @@ function SummitQuest() {
           <div className="sticker bg-cream p-6 md:p-8" style={{ backgroundImage: 'repeating-linear-gradient(transparent 0 31px, rgb(255 79 163 / .15) 31px 32px)' }}>
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="chip">journal page {idx + 1}/{hikes.length}</span>
-              <span className="font-hand text-xl text-berry"><Editable text={hike.date} /></span>
+              {hike.date && <span className="font-hand text-xl text-berry"><Editable text={hike.date} /></span>}
             </div>
             <h3 className="mt-4 font-display text-4xl font-black leading-none md:text-5xl"><Editable text={hike.name} /></h3>
             <p className="mt-2 inline-flex items-center gap-1 text-ink/70"><MapPin size={16} /> <Editable text={hike.location} /></p>
@@ -250,9 +357,26 @@ function SummitQuest() {
               </div>
             </dl>
 
+            {(hike.movingTime || hike.elapsedTime || hike.maxElevation != null) ? (
+              <div className="mt-3 flex flex-wrap gap-2 text-sm font-bold">
+                {!!hike.movingTime && (
+                  <span className="chip"><Clock size={14} /> {formatDuration(hike.movingTime)} moving</span>
+                )}
+                {!!hike.elapsedTime && hike.elapsedTime - (hike.movingTime ?? 0) >= 60 && (
+                  <span className="chip"><Clock size={14} /> {formatDuration(hike.elapsedTime)} total</span>
+                )}
+                {hike.maxElevation != null && (
+                  <span className="chip"><MountainSnow size={14} /> high point {hike.maxElevation.toLocaleString()} {units.elevation}</span>
+                )}
+              </div>
+            ) : null}
+
             <svg viewBox="0 0 300 80" className="mt-5 w-full" aria-hidden>
+              {hike.profile && hike.profile.length > 1 && (
+                <path d={`${realProfilePath(hike.profile)} L300,76 L0,76 Z`} fill="#FF4FA3" opacity=".12" />
+              )}
               <motion.path
-                d={profilePath(hike)}
+                d={hike.profile && hike.profile.length > 1 ? realProfilePath(hike.profile) : profilePath(hike)}
                 fill="none"
                 stroke="#FF4FA3"
                 strokeWidth="3"
@@ -262,7 +386,11 @@ function SummitQuest() {
               />
               <line x1="0" x2="300" y1="76" y2="76" stroke="#21151D" strokeOpacity=".2" strokeWidth="2" />
             </svg>
-            <p className="text-right text-[10px] uppercase tracking-wider text-ink/40">elevation profile (illustrative)</p>
+            <p className="text-right text-[10px] uppercase tracking-wider text-ink/40">
+              {hike.profile && hike.profile.length > 1
+                ? `elevation profile (from Garmin) · ${Math.min(...hike.profile)}–${Math.max(...hike.profile)} ${units.elevation}`
+                : 'elevation profile (illustrative)'}
+            </p>
 
             <p className="mt-4 text-lg leading-8"><Editable text={hike.experience} /></p>
             <div className="mt-5 rotate-1 rounded-lg bg-baby p-4 shadow-[3px_3px_0_0_#21151D]">
@@ -281,13 +409,13 @@ function SummitQuest() {
           </div>
 
           <div className="grid auto-rows-[minmax(10rem,1fr)] grid-cols-2 gap-4">
-            {hike.photos.map((ph, i) => (
+            {photos.map((ph, i) => (
               <figure
-                key={i}
-                className={`sticker overflow-hidden bg-cream p-2 pb-8 ${hike.photos.length === 1 || i === 0 ? 'col-span-2' : ''} ${i % 2 ? 'rotate-2' : '-rotate-1'}`}
+                key={ph.src || i}
+                className={`sticker overflow-hidden bg-cream p-2 pb-8 ${photos.length === 1 || i === 0 ? 'col-span-2' : ''} ${i % 2 ? 'rotate-2' : '-rotate-1'}`}
               >
                 <div className="h-full min-h-40 overflow-hidden rounded-lg border-2 border-ink">
-                  <Photo photo={ph} seed={i + idx} />
+                  <Photo photo={ph} seed={i + idx} hint={import.meta.env.DEV ? `photos/mountains/${hike.id}/` : undefined} />
                 </div>
                 {ph.caption && <figcaption className="-mb-6 mt-1 text-center font-hand text-xl">{ph.caption}</figcaption>}
               </figure>
@@ -330,7 +458,17 @@ function Dreams() {
   )
 }
 
+const AddPhotos = lazy(() => import('./AddPhotos'))
+
 export function Mountains() {
+  const sub = useHashSubpath()
+  if (sub === 'add-photo') {
+    return (
+      <Suspense fallback={<div className="min-h-screen" />}>
+        <AddPhotos />
+      </Suspense>
+    )
+  }
   return (
     <>
       <MountainHero />

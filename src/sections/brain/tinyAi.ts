@@ -1,14 +1,14 @@
 /**
- * The "Tiny AI": a transparent, browser-only recommender.
+ * The "Tiny AI": a transparent, browser-only recommender for things to do together with Yiyi.
  *   score = feature similarity  +  context fit  +  learned bias (from your 👍/👎)
  * plus an ε-greedy policy that sometimes explores instead of exploiting the top pick.
  */
 
 export const FEATURES = [
-  { key: 'adventure', label: 'Adventure', low: 'homebody', high: 'send it' },
+  { key: 'adventure', label: 'Adventure', low: 'keep it chill', high: 'send it' },
   { key: 'energy', label: 'Energy', low: 'sloth mode', high: 'beast mode' },
   { key: 'brainy', label: 'Brain power', low: 'brain off', high: 'galaxy brain' },
-  { key: 'social', label: 'Social battery', low: 'solo', high: 'squad' },
+  { key: 'social', label: 'Squad size', low: 'just us two', high: 'bring friends' },
 ] as const
 
 export type FeatureKey = (typeof FEATURES)[number]['key']
@@ -26,16 +26,21 @@ export type Item = {
 }
 
 export const ITEMS: Item[] = [
-  { id: 'summit', name: 'Sunrise summit hike', emoji: '🏔️', hours: 6, outdoor: true, f: { adventure: 0.95, energy: 0.9, brainy: 0.1, social: 0.4 } },
-  { id: 'deadlift', name: 'Heavy deadlift session', emoji: '🏋️‍♀️', hours: 1.5, outdoor: false, f: { adventure: 0.3, energy: 1, brainy: 0.2, social: 0.2 } },
-  { id: 'stairs', name: 'Stair climber + nerdy podcast', emoji: '🪜', hours: 1, outdoor: false, f: { adventure: 0.1, energy: 0.8, brainy: 0.6, social: 0 } },
-  { id: 'side', name: 'Hack on a side project', emoji: '💻', hours: 3, outdoor: false, f: { adventure: 0.3, energy: 0.3, brainy: 1, social: 0.1 } },
-  { id: 'paper', name: 'ML paper + matcha latte', emoji: '🍵', hours: 1.5, outdoor: false, f: { adventure: 0.05, energy: 0.1, brainy: 0.9, social: 0 } },
-  { id: 'brunch', name: 'Brunch & big startup ideas', emoji: '🥞', hours: 2, outdoor: false, f: { adventure: 0.3, energy: 0.3, brainy: 0.5, social: 1 } },
-  { id: 'hackathon', name: 'Weekend hackathon', emoji: '🚀', hours: 8, outdoor: false, f: { adventure: 0.6, energy: 0.6, brainy: 0.95, social: 0.8 } },
-  { id: 'snowshoe', name: 'Snowshoe trek', emoji: '❄️', hours: 5, outdoor: true, snowFriendly: true, f: { adventure: 0.9, energy: 0.8, brainy: 0.05, social: 0.5 } },
-  { id: 'cozy', name: 'Movie, face mask & snacks', emoji: '🎬', hours: 2, outdoor: false, f: { adventure: 0, energy: 0, brainy: 0.1, social: 0.3 } },
-  { id: 'solo-hike', name: 'All-day solo hike (8–9 hrs)', emoji: '🥾', hours: 9, outdoor: true, f: { adventure: 1, energy: 0.95, brainy: 0.2, social: 0 } },
+  { id: 'all-day-hike', name: 'All-day mountain hike (8–9 hrs)', emoji: '🥾', hours: 9, outdoor: true, f: { adventure: 1, energy: 0.95, brainy: 0.15, social: 0.2 } },
+  { id: 'summit', name: 'Sunrise summit hike', emoji: '🏔️', hours: 5, outdoor: true, f: { adventure: 0.9, energy: 0.85, brainy: 0.1, social: 0.3 } },
+  { id: 'snowboard', name: 'Snowboarding day on the mountain', emoji: '🏂', hours: 6, outdoor: true, snowFriendly: true, f: { adventure: 0.95, energy: 0.9, brainy: 0.1, social: 0.5 } },
+  { id: 'lift', name: 'Lifting session (I spot you, you spot me)', emoji: '🏋️‍♀️', hours: 1.5, outdoor: false, f: { adventure: 0.3, energy: 1, brainy: 0.15, social: 0.3 } },
+  { id: 'pullups', name: 'Pull-up challenge: who gets more?', emoji: '💪', hours: 1, outdoor: false, f: { adventure: 0.45, energy: 0.9, brainy: 0.1, social: 0.5 } },
+  { id: 'stairs', name: 'Stair climber race', emoji: '🪜', hours: 1, outdoor: false, f: { adventure: 0.25, energy: 0.85, brainy: 0.05, social: 0.2 } },
+  { id: 'boxing', name: 'Boxing class together', emoji: '🥊', hours: 1.5, outdoor: false, f: { adventure: 0.6, energy: 0.95, brainy: 0.15, social: 0.7 } },
+  { id: 'run', name: 'Morning run & coffee after', emoji: '🏃‍♀️', hours: 1.5, outdoor: true, f: { adventure: 0.4, energy: 0.75, brainy: 0.2, social: 0.4 } },
+  { id: 'post-workout-eats', name: 'Post-workout food hunt', emoji: '🍜', hours: 1.5, outdoor: false, f: { adventure: 0.4, energy: 0.2, brainy: 0.2, social: 0.8 } },
+  { id: 'ai-chat', name: 'Coffee chat about AI & data', emoji: '☕', hours: 1.5, outdoor: false, f: { adventure: 0.2, energy: 0.25, brainy: 1, social: 0.5 } },
+  { id: 'side-project', name: 'Build a side project together', emoji: '💻', hours: 3, outdoor: false, f: { adventure: 0.4, energy: 0.35, brainy: 0.95, social: 0.4 } },
+  { id: 'startup', name: 'Startup idea brainstorm', emoji: '🚀', hours: 2, outdoor: false, f: { adventure: 0.6, energy: 0.45, brainy: 0.85, social: 0.75 } },
+  { id: 'hackathon', name: 'Team up for a hackathon', emoji: '🧑‍💻', hours: 10, outdoor: false, f: { adventure: 0.65, energy: 0.6, brainy: 0.95, social: 0.9 } },
+  { id: 'road-trip', name: 'Road trip to a national park', emoji: '🚗', hours: 10, outdoor: true, f: { adventure: 0.9, energy: 0.6, brainy: 0.2, social: 0.85 } },
+  { id: 'photo-walk', name: 'City photo walk', emoji: '📸', hours: 3, outdoor: true, f: { adventure: 0.5, energy: 0.4, brainy: 0.3, social: 0.6 } },
 ]
 
 export type Context = { weather: Weather; hours: number }

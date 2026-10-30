@@ -1,10 +1,11 @@
-import { useState, type PointerEvent } from 'react'
+import { useRef, useState, type PointerEvent } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react'
 import { Check, Sparkles, Sword, Shield, Map } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import { BackHome, Reveal, SectionTitle } from '../components/Bits'
 import { Editable } from '../components/Editable'
 import { InstagramIcon } from '../components/BrandIcons'
+import { MUSIC_PAUSE, MUSIC_RESUME } from '../components/MusicPlayer'
 import { about, links, photos, site } from '../data/content'
 import { asset } from '../lib/asset'
 
@@ -98,34 +99,104 @@ function Quests() {
   )
 }
 
-function FlipCard({ item, index }: { item: (typeof about.notOnResume)[number]; index: number }) {
+type ResumeItem = (typeof about.notOnResume)[number] & { youtubeId?: string }
+
+function FlipCard({ item, index }: { item: ResumeItem; index: number }) {
   const [flipped, setFlipped] = useState(false)
+  const song = item.youtubeId
+  const title = item.title.replace(/[[\]]/g, '')
+  const face = 'sticker absolute inset-0 [backface-visibility:hidden]'
   return (
-    <button
-      onClick={() => setFlipped((f) => !f)}
-      aria-pressed={flipped}
-      aria-label={`${item.title.replace(/[[\]]/g, '')}. ${flipped ? item.body.replace(/[[\]]/g, '') : 'Flip to reveal.'}`}
-      className="group h-56 w-full text-left [perspective:1000px]"
-    >
+    <div className="group h-56 w-full [perspective:1000px]">
       <motion.div
         animate={{ rotateY: flipped ? 180 : 0 }}
         transition={{ type: 'spring', stiffness: 260, damping: 22 }}
         className="relative h-full w-full [transform-style:preserve-3d]"
       >
-        <div
-          className={`sticker absolute inset-0 flex flex-col justify-between p-5 [backface-visibility:hidden] ${index % 3 === 0 ? 'bg-baby' : index % 3 === 1 ? 'bg-cream' : 'bg-hot text-cream'} ${index % 2 ? 'rotate-1' : '-rotate-1'}`}
+        <button
+          onClick={() => { setFlipped(true); if (song) window.dispatchEvent(new Event(MUSIC_PAUSE)) }}
+          aria-hidden={flipped}
+          tabIndex={flipped ? -1 : 0}
+          aria-label={song ? `${title}. Play the song.` : `${title}. Flip to reveal.`}
+          className={`${face} flex flex-col justify-between p-5 text-left ${index % 3 === 0 ? 'bg-baby' : index % 3 === 1 ? 'bg-cream' : 'bg-hot text-cream'} ${index % 2 ? 'rotate-1' : '-rotate-1'}`}
         >
           <span className="text-5xl transition group-hover:scale-110" aria-hidden>{item.emoji}</span>
-          <div>
-            <p className="font-display text-2xl font-black leading-tight"><Editable text={item.title} /></p>
-            <p className="mt-1 font-hand text-xl opacity-70">tap to flip ↻</p>
-          </div>
-        </div>
-        <div className="sticker absolute inset-0 flex items-center bg-ink p-5 text-cream [backface-visibility:hidden] [transform:rotateY(180deg)]">
-          <p className="text-lg"><Editable text={item.body} /></p>
+          <span>
+            <span className="block font-display text-2xl font-black leading-tight"><Editable text={item.title} /></span>
+            <span className="mt-1 block font-hand text-xl opacity-70">{song ? 'tap to play ▶' : 'tap to flip ↻'}</span>
+          </span>
+        </button>
+        <div aria-hidden={!flipped} className={`${face} flex flex-col bg-ink p-4 text-cream [transform:rotateY(180deg)]`}>
+          {song ? (
+            <>
+              <div className="min-h-0 flex-1 overflow-hidden rounded-xl border-2 border-cream/30 bg-ink">
+                {flipped && (
+                  <iframe
+                    className="h-full w-full"
+                    src={`https://www.youtube-nocookie.com/embed/${song}?autoplay=1&rel=0&modestbranding=1`}
+                    title={title}
+                    allow="autoplay; encrypted-media; picture-in-picture"
+                    allowFullScreen
+                  />
+                )}
+              </div>
+              <div className="mt-2 flex items-center justify-between gap-2">
+                <p className="truncate text-sm font-semibold">{item.body}</p>
+                <button onClick={() => { setFlipped(false); window.dispatchEvent(new Event(MUSIC_RESUME)) }} tabIndex={flipped ? 0 : -1} className="shrink-0 rounded-full border-2 border-cream px-3 py-1 text-xs font-bold hover:bg-hot">
+                  stop ■
+                </button>
+              </div>
+            </>
+          ) : (
+            <button onClick={() => setFlipped(false)} tabIndex={flipped ? 0 : -1} aria-label={`${title}: ${item.body}. Flip back.`} className="flex h-full w-full items-center text-left">
+              <span className="text-lg"><Editable text={item.body} /></span>
+            </button>
+          )}
         </div>
       </motion.div>
-    </button>
+    </div>
+  )
+}
+
+function PhotoStrip() {
+  const box = useRef<HTMLDivElement>(null)
+  const [edge, setEdge] = useState({ top: true, bottom: false })
+  const update = () => {
+    const el = box.current
+    if (!el) return
+    setEdge({ top: el.scrollTop < 8, bottom: el.scrollTop + el.clientHeight > el.scrollHeight - 8 })
+  }
+
+  return (
+    <div className="relative">
+      <div
+        ref={box}
+        onScroll={update}
+        tabIndex={0}
+        role="region"
+        aria-label={`Photo dump, ${photos.gallery.length} photos. Scroll to see more.`}
+        className="h-[70vh] max-h-[44rem] min-h-[26rem] overflow-y-auto overscroll-contain rounded-[1.75rem] border-2 border-ink bg-blush/60 p-5 [scrollbar-color:#FF4FA3_transparent] [scrollbar-width:thin] md:p-7"
+      >
+        <ul className="columns-2 gap-5 md:columns-3">
+          {photos.gallery.map((p, i) => (
+            <li key={p.src} className="mb-6 break-inside-avoid">
+              <motion.figure
+                whileHover={{ rotate: 0, scale: 1.03 }}
+                className={`border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
+              >
+                <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" className="w-full border-2 border-ink" />
+                <figcaption className="-mb-7 mt-1 truncate text-center font-hand text-xl">{p.caption}</figcaption>
+              </motion.figure>
+            </li>
+          ))}
+        </ul>
+      </div>
+      <div aria-hidden className={`pointer-events-none absolute inset-x-[2px] top-[2px] h-12 rounded-t-[1.7rem] bg-gradient-to-b from-baby to-transparent transition-opacity ${edge.top ? 'opacity-0' : 'opacity-100'}`} />
+      <div aria-hidden className={`pointer-events-none absolute inset-x-[2px] bottom-[2px] h-16 rounded-b-[1.7rem] bg-gradient-to-t from-baby to-transparent transition-opacity ${edge.bottom ? 'opacity-0' : 'opacity-100'}`} />
+      <p className={`mt-3 text-center font-hand text-xl text-berry transition-opacity ${edge.bottom ? 'opacity-0' : ''}`}>
+        ↓ scroll for more ({photos.gallery.length} photos) ↓
+      </p>
+    </div>
   )
 }
 
@@ -193,19 +264,7 @@ export function About() {
               <InstagramIcon size={18} /> Follow {links.instagramHandle}
             </a>
           </div>
-          <ul className="columns-2 gap-5 md:columns-3">
-            {photos.gallery.map((p, i) => (
-              <li key={p.src} className="mb-5 break-inside-avoid">
-                <motion.figure
-                  whileHover={{ rotate: 0, scale: 1.03 }}
-                  className={`border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
-                >
-                  <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" className="w-full border-2 border-ink" />
-                  <figcaption className="-mb-7 mt-1 text-center font-hand text-xl">{p.caption}</figcaption>
-                </motion.figure>
-              </li>
-            ))}
-          </ul>
+          <PhotoStrip />
         </div>
       </section>
     </>

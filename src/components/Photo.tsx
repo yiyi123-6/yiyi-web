@@ -30,8 +30,8 @@ const SCENES = [
   </g>,
 ]
 
-/** Lazy-loading image with an illustrated pink placeholder when no `src` is set yet. */
-export function Photo({ photo, seed = 0, className = '' }: { photo: PhotoT; seed?: number; className?: string }) {
+/** Lazy-loading image with an illustrated pink placeholder when no `src` is set yet. `hint` (dev only) says where to drop a photo. */
+export function Photo({ photo, seed = 0, className = '', hint }: { photo: PhotoT; seed?: number; className?: string; hint?: string }) {
   if (photo.src) {
     return (
       <img
@@ -55,6 +55,14 @@ export function Photo({ photo, seed = 0, className = '' }: { photo: PhotoT; seed
       <span className="absolute right-2 top-2 inline-flex items-center gap-1 rounded-full bg-cream/90 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-berry">
         <Camera size={11} /> your photo
       </span>
+      {hint && (
+        <a
+          href="#/mountains/add-photo"
+          className="absolute inset-x-2 bottom-2 rounded-lg bg-ink/85 px-2 py-1 text-center font-mono text-[11px] text-cream hover:bg-hot"
+        >
+          + add photos (or drop them in {hint})
+        </a>
+      )}
     </div>
   )
 }
