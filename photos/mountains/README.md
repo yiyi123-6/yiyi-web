@@ -2,6 +2,8 @@
 
 Drop photos for a hike into its folder and they appear on that hike's journal page (no code to edit).
 
+**Easiest:** run `npm run dev` and open <http://localhost:5173/#/mountains/add-photo>. Pick a hike, drag photos in (they're resized to 1600 px and saved as WebP), edit captions, reorder or delete them, then click **Publish** to commit and push. That page only exists on the local dev server; the live site just shows the photos.
+
 - Formats: `.jpg`, `.jpeg`, `.png`, `.webp`, `.avif`, `.gif`. iPhone `.heic` doesn't show in browsers, so export or convert to JPEG first.
 - Order: by filename, so prefix them: `01-summit.jpg`, `02-trail-snacks.jpg`.
 - Caption: the filename minus the number and extension (`02-trail-snacks.jpg` → "trail snacks"). Name a file just `01.jpg` for no caption.

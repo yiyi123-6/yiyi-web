@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { Suspense, lazy, useEffect, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
 import { ChevronLeft, ChevronRight, Clock, Footprints, MapPin, Mountain, MountainSnow, TrendingUp } from 'lucide-react'
 import { BackHome, Reveal, SectionTitle } from '../../components/Bits'
@@ -6,7 +6,8 @@ import { Editable } from '../../components/Editable'
 import { Photo } from '../../components/Photo'
 import { site, type Photo as PhotoT } from '../../data/content'
 import data from '../../data/hikes.json'
-import { photosForHike } from '../../lib/hikePhotos'
+import { photosForHike, useLivePhotoFiles } from '../../lib/hikePhotos'
+import { useHashSubpath } from '../../lib/router'
 import { useUniverse } from '../../lib/universe'
 
 /** Shape of an entry in hikes.json. Everything after `takeaway` is optional and filled in by `npm run import:garmin`. */
@@ -191,7 +192,8 @@ function SummitQuest() {
   }))
   const trail = catmull([{ x: 10, y: H - 30 }, ...pins, { x: W - 10, y: pins[pins.length - 1]?.y ?? H / 2 }])
   const hike = hikes[idx]
-  const photos = photosForHike(hike.id, hike.photos)
+  const livePhotos = useLivePhotoFiles()
+  const photos = photosForHike(hike.id, hike.photos, livePhotos)
   const label = (h: Hike) => h.name.replace(/[[\]]/g, '')
 
   const totalKm = hikes.reduce((s, h) => s + h.distance, 0)
@@ -456,7 +458,17 @@ function Dreams() {
   )
 }
 
+const AddPhotos = lazy(() => import('./AddPhotos'))
+
 export function Mountains() {
+  const sub = useHashSubpath()
+  if (sub === 'add-photo') {
+    return (
+      <Suspense fallback={<div className="min-h-screen" />}>
+        <AddPhotos />
+      </Suspense>
+    )
+  }
   return (
     <>
       <MountainHero />

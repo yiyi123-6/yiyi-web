@@ -1,13 +1,16 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import tailwindcss from '@tailwindcss/vite'
+import { photoUploader } from './scripts/vite-photo-uploader'
 
 // GitHub Pages serves project repos from /<repo-name>/ and user sites
 // (<username>.github.io) from /. The deploy workflow sets VITE_BASE for you;
 // locally it defaults to '/'.
 export default defineConfig({
   base: process.env.VITE_BASE ?? '/',
-  plugins: [react(), tailwindcss()],
+  plugins: [react(), tailwindcss(), photoUploader()],
+  // Uploads from #/mountains/add-photo would otherwise reload the page mid-upload; the dev site reads that folder live instead.
+  server: { watch: { ignored: ['**/photos/**'] } },
   build: {
     target: 'es2020',
     cssCodeSplit: true,

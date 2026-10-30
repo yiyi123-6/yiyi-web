@@ -56,9 +56,12 @@ export function Photo({ photo, seed = 0, className = '', hint }: { photo: PhotoT
         <Camera size={11} /> your photo
       </span>
       {hint && (
-        <span className="absolute inset-x-2 bottom-2 rounded-lg bg-ink/85 px-2 py-1 text-center font-mono text-[11px] text-cream">
-          drop photos in {hint}
-        </span>
+        <a
+          href="#/mountains/add-photo"
+          className="absolute inset-x-2 bottom-2 rounded-lg bg-ink/85 px-2 py-1 text-center font-mono text-[11px] text-cream hover:bg-hot"
+        >
+          + add photos (or drop them in {hint})
+        </a>
       )}
     </div>
   )
