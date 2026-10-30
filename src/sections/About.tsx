@@ -1,6 +1,6 @@
 import { useRef, useState, type PointerEvent } from 'react'
 import { motion, useMotionValue, useReducedMotion, useSpring, useTransform } from 'motion/react'
-import { Check, ChevronLeft, ChevronRight, Sparkles, Sword, Shield, Map } from 'lucide-react'
+import { Check, Sparkles, Sword, Shield, Map } from 'lucide-react'
 import { Avatar } from '../components/Avatar'
 import { BackHome, Reveal, SectionTitle } from '../components/Bits'
 import { Editable } from '../components/Editable'
@@ -159,66 +159,43 @@ function FlipCard({ item, index }: { item: ResumeItem; index: number }) {
 }
 
 function PhotoStrip() {
-  const track = useRef<HTMLUListElement>(null)
-  const [edge, setEdge] = useState({ start: true, end: false })
-  const drag = useRef<{ x: number; left: number } | null>(null)
-
+  const box = useRef<HTMLDivElement>(null)
+  const [edge, setEdge] = useState({ top: true, bottom: false })
   const update = () => {
-    const el = track.current
+    const el = box.current
     if (!el) return
-    setEdge({ start: el.scrollLeft < 8, end: el.scrollLeft + el.clientWidth > el.scrollWidth - 8 })
+    setEdge({ top: el.scrollTop < 8, bottom: el.scrollTop + el.clientHeight > el.scrollHeight - 8 })
   }
-  const endDrag = () => {
-    if (!drag.current) return
-    drag.current = null
-    if (track.current) track.current.style.scrollSnapType = ''
-  }
-  const by = (dir: 1 | -1) => track.current?.scrollBy({ left: dir * track.current.clientWidth * 0.8, behavior: 'smooth' })
 
   return (
     <div className="relative">
-      <ul
-        ref={track}
+      <div
+        ref={box}
         onScroll={update}
         tabIndex={0}
-        aria-label="Photo dump — scroll sideways"
-        onKeyDown={(e) => {
-          if (e.key === 'ArrowRight') { e.preventDefault(); by(1) }
-          if (e.key === 'ArrowLeft') { e.preventDefault(); by(-1) }
-        }}
-        onPointerDown={(e) => {
-          if (e.pointerType !== 'mouse' || !track.current) return
-          drag.current = { x: e.clientX, left: track.current.scrollLeft }
-          track.current.style.scrollSnapType = 'none'
-        }}
-        onPointerMove={(e) => {
-          const d = drag.current
-          if (!d || !track.current) return
-          track.current.scrollLeft = d.left - (e.clientX - d.x)
-        }}
-        onPointerUp={() => endDrag()}
-        onPointerLeave={() => endDrag()}
-        className="-mx-4 flex cursor-grab snap-x snap-mandatory gap-6 overflow-x-auto px-4 pb-8 pt-4 [scrollbar-color:#FF4FA3_transparent] [scrollbar-width:thin] active:cursor-grabbing md:-mx-8 md:px-8"
+        role="region"
+        aria-label={`Photo dump, ${photos.gallery.length} photos. Scroll to see more.`}
+        className="h-[70vh] max-h-[44rem] min-h-[26rem] overflow-y-auto overscroll-contain rounded-[1.75rem] border-2 border-ink bg-blush/60 p-5 [scrollbar-color:#FF4FA3_transparent] [scrollbar-width:thin] md:p-7"
       >
-        {photos.gallery.map((p, i) => (
-          <li key={p.src} className="w-56 shrink-0 snap-center sm:w-64 md:w-72">
-            <motion.figure
-              whileHover={{ rotate: 0, y: -6 }}
-              className={`select-none border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
-            >
-              <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" draggable={false} className="aspect-[4/5] w-full border-2 border-ink object-cover" />
-              <figcaption className="-mb-7 mt-1 truncate text-center font-hand text-xl">{p.caption}</figcaption>
-            </motion.figure>
-          </li>
-        ))}
-      </ul>
-      <div className="mt-2 flex items-center justify-between gap-3">
-        <p className="font-hand text-xl text-berry">{photos.gallery.length} photos · swipe, drag or use the arrows →</p>
-        <div className="flex gap-2">
-          <button onClick={() => by(-1)} disabled={edge.start} aria-label="Previous photos" className="btn-cream !p-2.5"><ChevronLeft size={18} /></button>
-          <button onClick={() => by(1)} disabled={edge.end} aria-label="Next photos" className="btn-hot !p-2.5"><ChevronRight size={18} /></button>
-        </div>
+        <ul className="columns-2 gap-5 md:columns-3">
+          {photos.gallery.map((p, i) => (
+            <li key={p.src} className="mb-6 break-inside-avoid">
+              <motion.figure
+                whileHover={{ rotate: 0, scale: 1.03 }}
+                className={`border-2 border-ink bg-cream p-2 pb-9 shadow-[var(--shadow-sticker)] ${i % 3 === 0 ? '-rotate-2' : i % 3 === 1 ? 'rotate-1' : 'rotate-2'}`}
+              >
+                <img src={asset(p.src)} alt={p.alt} loading="lazy" decoding="async" className="w-full border-2 border-ink" />
+                <figcaption className="-mb-7 mt-1 truncate text-center font-hand text-xl">{p.caption}</figcaption>
+              </motion.figure>
+            </li>
+          ))}
+        </ul>
       </div>
+      <div aria-hidden className={`pointer-events-none absolute inset-x-[2px] top-[2px] h-12 rounded-t-[1.7rem] bg-gradient-to-b from-baby to-transparent transition-opacity ${edge.top ? 'opacity-0' : 'opacity-100'}`} />
+      <div aria-hidden className={`pointer-events-none absolute inset-x-[2px] bottom-[2px] h-16 rounded-b-[1.7rem] bg-gradient-to-t from-baby to-transparent transition-opacity ${edge.bottom ? 'opacity-0' : 'opacity-100'}`} />
+      <p className={`mt-3 text-center font-hand text-xl text-berry transition-opacity ${edge.bottom ? 'opacity-0' : ''}`}>
+        ↓ scroll for more ({photos.gallery.length} photos) ↓
+      </p>
     </div>
   )
 }
