@@ -1,20 +1,31 @@
 # Weekly: pull recent hikes from Garmin Connect, merge them into src/data/hikes.json,
-# commit to main and redeploy. Uses the UNOFFICIAL garminconnect library (see README).
+# build, commit if anything changed, and redeploy GitHub Pages.
+# Uses the UNOFFICIAL garminconnect library (see README > Garmin auto-sync).
 # Does nothing until GARMIN_TOKENS (or GARMIN_EMAIL + GARMIN_PASSWORD) repo secrets exist.
-name: Sync hikes from Garmin
+#
+# Deploys inline (upload-pages-artifact -> deploy job) because commits pushed with
+# GITHUB_TOKEN deliberately don't trigger other workflows, so deploy.yml wouldn't run.
+name: Garmin weekly sync
 
 on:
   schedule:
-    - cron: '17 6 * * 1' # Mondays 06:17 UTC
+    - cron: '17 6 * * 1' # Mondays 06:17 UTC (scheduled runs only fire from the default branch)
   workflow_dispatch:
     inputs:
       days:
-        description: How many days back to look
+        description: How many days back to look for hikes
+        required: false
         default: '45'
+      force_deploy:
+        description: Rebuild and redeploy even if no hikes changed
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
-  actions: write
+  pages: write
+  id-token: write
 
 concurrency:
   group: garmin-sync
@@ -23,6 +34,8 @@ concurrency:
 jobs:
   sync:
     runs-on: ubuntu-latest
+    outputs:
+      deploy: ${{ steps.diff.outputs.changed == 'true' || (steps.check.outputs.enabled == 'true' && inputs.force_deploy == true) }}
     steps:
       - name: Check for Garmin secrets
         id: check
@@ -34,14 +47,13 @@ jobs:
           if [ -n "$GARMIN_TOKENS" ] || { [ -n "$GARMIN_EMAIL" ] && [ -n "$GARMIN_PASSWORD" ]; }; then
             echo "enabled=true" >> "$GITHUB_OUTPUT"
           else
-            echo "::notice::Garmin sync skipped: add GARMIN_TOKENS (or GARMIN_EMAIL + GARMIN_PASSWORD) in Settings > Secrets and variables > Actions."
+            echo "::notice title=Garmin sync skipped::Add GARMIN_EMAIL + GARMIN_PASSWORD (or GARMIN_TOKENS) under Settings > Secrets and variables > Actions."
+            echo "Garmin sync skipped: no Garmin secrets configured. Nothing was changed or deployed." >> "$GITHUB_STEP_SUMMARY"
             echo "enabled=false" >> "$GITHUB_OUTPUT"
           fi
 
       - uses: actions/checkout@v4
         if: steps.check.outputs.enabled == 'true'
-        with:
-          ref: main
 
       - uses: actions/setup-python@v5
         if: steps.check.outputs.enabled == 'true'
@@ -52,39 +64,102 @@ jobs:
         if: steps.check.outputs.enabled == 'true'
         with:
           node-version: 22
+          cache: npm
 
+      - name: Install dependencies
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          pip install --quiet -r scripts/requirements-garmin.txt
+          npm ci
+
+      # garmin_sync.py exits 2 when the Garmin login fails; the job stops here, so nothing is committed or deployed.
       - name: Download hikes from Garmin Connect
         if: steps.check.outputs.enabled == 'true'
         env:
           GARMIN_TOKENS: ${{ secrets.GARMIN_TOKENS }}
           GARMIN_EMAIL: ${{ secrets.GARMIN_EMAIL }}
           GARMIN_PASSWORD: ${{ secrets.GARMIN_PASSWORD }}
+          DAYS: ${{ inputs.days || '45' }}
         run: |
-          pip install --quiet garminconnect==0.3.20
-          python scripts/garmin_sync.py --days "${{ inputs.days || '45' }}" --out "$RUNNER_TEMP/garmin"
-
-      - name: Merge into hikes.json
-        if: steps.check.outputs.enabled == 'true'
-        run: node scripts/import-garmin.mjs "$RUNNER_TEMP/garmin"
-
-      - name: Commit and push
-        id: commit
-        if: steps.check.outputs.enabled == 'true'
-        run: |
-          git add src/data/hikes.json
-          if git diff --cached --quiet; then
-            echo "No new hikes."
-            exit 0
+          set +e
+          python scripts/garmin_sync.py --days "$DAYS" --out "$RUNNER_TEMP/garmin"
+          code=$?
+          if [ "$code" = 2 ]; then
+            {
+              echo "### Garmin login failed"
+              echo "Nothing was changed or deployed. The red annotation above says why."
+              echo "Common causes: wrong GARMIN_EMAIL / GARMIN_PASSWORD, 2-step verification (MFA) on without a GARMIN_TOKENS secret, an expired GARMIN_TOKENS, or Garmin showing a captcha / changing its login (this uses an unofficial connection)."
+            } >> "$GITHUB_STEP_SUMMARY"
           fi
+          exit $code
+
+      - name: Merge into src/data/hikes.json
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          dir="$RUNNER_TEMP/garmin"
+          count=$(node -e "console.log(JSON.parse(require('fs').readFileSync(process.argv[1], 'utf8')).length)" "$dir/activities.json")
+          if [ "$count" = 0 ]; then
+            echo "No hikes on Garmin in this window."
+          else
+            node scripts/import-garmin.mjs "$dir"
+          fi
+
+      - name: Check for changes
+        id: diff
+        if: steps.check.outputs.enabled == 'true'
+        run: |
+          if git diff --quiet -- src/data/hikes.json; then
+            echo "changed=false" >> "$GITHUB_OUTPUT"
+            echo "No new or updated hikes." | tee -a "$GITHUB_STEP_SUMMARY"
+          else
+            echo "changed=true" >> "$GITHUB_OUTPUT"
+            { echo "### hikes.json updated"; echo '```'; git diff --stat -- src/data/hikes.json; echo '```'; } | tee -a "$GITHUB_STEP_SUMMARY"
+          fi
+
+      # <user>.github.io repos are served from "/", every other repo from "/<repo-name>/".
+      - name: Compute base path
+        if: steps.diff.outputs.changed == 'true' || (steps.check.outputs.enabled == 'true' && inputs.force_deploy == true)
+        run: |
+          REPO="${GITHUB_REPOSITORY#*/}"
+          if [[ "$REPO" == *.github.io ]]; then
+            echo "VITE_BASE=/" >> "$GITHUB_ENV"
+          else
+            echo "VITE_BASE=/$REPO/" >> "$GITHUB_ENV"
+          fi
+
+      # Built before committing so a hikes.json that breaks the site never lands on main.
+      - name: Build
+        if: steps.diff.outputs.changed == 'true' || (steps.check.outputs.enabled == 'true' && inputs.force_deploy == true)
+        run: npm run build
+
+      - name: Commit and push hikes.json
+        if: steps.diff.outputs.changed == 'true'
+        run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git commit -m "Sync hikes from Garmin Connect"
-          git push origin HEAD:main
-          echo "changed=true" >> "$GITHUB_OUTPUT"
+          git add src/data/hikes.json
+          git commit -m "Sync hikes from Garmin Connect ($(date -u +%Y-%m-%d))"
+          git pull --rebase origin "${GITHUB_REF_NAME}"
+          git push origin "HEAD:${GITHUB_REF_NAME}"
 
-      # Pushes made with GITHUB_TOKEN don't trigger other workflows, so start the deploy explicitly.
-      - name: Redeploy site
-        if: steps.commit.outputs.changed == 'true'
-        env:
-          GH_TOKEN: ${{ github.token }}
-        run: gh workflow run deploy.yml --ref main
+      - uses: actions/configure-pages@v5
+        if: steps.diff.outputs.changed == 'true' || (steps.check.outputs.enabled == 'true' && inputs.force_deploy == true)
+
+      - uses: actions/upload-pages-artifact@v3
+        if: steps.diff.outputs.changed == 'true' || (steps.check.outputs.enabled == 'true' && inputs.force_deploy == true)
+        with:
+          path: dist
+
+  deploy:
+    needs: sync
+    if: needs.sync.outputs.deploy == 'true'
+    runs-on: ubuntu-latest
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -35,6 +35,7 @@ Built with React 18, Vite, TypeScript, Tailwind CSS v4 and Motion. It's a fully 
 ├── scripts/
 │   ├── import-garmin.mjs       # Garmin export (CSV/GPX/TCX) → hikes.json
 │   ├── garmin_sync.py          # Downloads recent hikes from Garmin Connect (weekly sync)
+│   ├── requirements-garmin.txt # Python dependency for garmin_sync.py
 │   └── fixtures/               # Sample Garmin files used by the importer tests
 └── .github/workflows/
     ├── deploy.yml              # Auto-deploy to GitHub Pages
@@ -136,26 +137,31 @@ Running the same hike through both the CSV and its GPX is fine: they are merged 
 
 ### Option 2 — weekly automatic sync (unofficial)
 
-`.github/workflows/garmin-sync.yml` runs every Monday (and on demand). It signs in to Garmin Connect, downloads your hiking, walking, trail-running and mountaineering activities from the last 45 days (summary and GPX), runs the same importer, commits `src/data/hikes.json` to `main` if anything changed, and starts the Pages deploy. Without secrets it does nothing and still shows green.
+`.github/workflows/garmin-sync.yml` ("Garmin weekly sync") runs every Monday at 06:17 UTC and on demand. It signs in to Garmin Connect and downloads your hiking, walking and mountaineering activities from the last 45 days (summary and GPX), then runs the same importer. If `src/data/hikes.json` changed, it builds the site, commits the file to `main` and redeploys GitHub Pages in the same run. If nothing changed, nothing is committed or deployed. Without secrets it does nothing and still shows green.
 
 **Setup:**
 
-1. Get a login token on your own computer. This step handles Garmin's 2-step verification, which a scheduled job can't do:
+1. Add the secrets in the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**.
+   - **No 2-step verification on your Garmin account:** add `GARMIN_EMAIL` (your Garmin Connect sign-in email) and `GARMIN_PASSWORD`.
+   - **2-step verification (MFA) on:** a scheduled job can't type the code, so either turn MFA off or create a login token once on your own computer, and save the JSON line it prints as `GARMIN_TOKENS`:
 
-   ```bash
-   pip install garminconnect==0.3.20
-   python scripts/garmin_sync.py --print-token     # asks for email, password and MFA code
-   ```
+     ```bash
+     pip install -r scripts/requirements-garmin.txt
+     python scripts/garmin_sync.py --print-token     # asks for email, password and MFA code
+     ```
 
-2. In the GitHub repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add `GARMIN_TOKENS` with the JSON line it printed. Alternatively, if your account has no 2-step verification, add `GARMIN_EMAIL` and `GARMIN_PASSWORD` instead. You can also add them alongside the token as a fallback.
-3. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch). Then try it from **Actions → Sync hikes from Garmin → Run workflow**.
-4. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards.
+     You can keep `GARMIN_EMAIL` / `GARMIN_PASSWORD` alongside the token; the token is tried first.
+2. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
+3. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch).
+4. Run it once by hand: **Actions → Garmin weekly sync → Run workflow**. You can set how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. With the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=90`.
+5. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards. Later syncs keep your edits.
 
-**Caveats:** this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. It is **not an official Garmin API**: Garmin can change its login or block GitHub's servers at any time, and saved tokens eventually expire. When that happens, the run fails with a short reason in the log and nothing is committed. Create a new token with `--print-token`, or fall back to Option 1. Secrets are stored encrypted by GitHub and are never shipped to the website. Garmin may email you about a "new sign-in" the first time.
+**Caveats:** this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. It is **not an official Garmin API**. Garmin can change its login, show a captcha or block GitHub's servers at any time, and saved tokens eventually expire. When the login fails, the run turns red with a plain-English reason at the top of the run page, and nothing is committed or deployed. The site keeps working; it just doesn't get new hikes. Create a new token with `--print-token`, or fall back to Option 1. Secrets are stored encrypted by GitHub and are never shipped to the website. Garmin may email you about a "new sign-in" the first time.
 
 To run the sync on your own computer instead:
 
 ```bash
-GARMIN_TOKENS='<token json>' python scripts/garmin_sync.py --out garmin-export --days 90
-npm run import:garmin -- garmin-export
+pip install -r scripts/requirements-garmin.txt
+GARMIN_TOKENS='<token json>' python scripts/garmin_sync.py --out garmin-export --days 90   # or GARMIN_EMAIL + GARMIN_PASSWORD
+npm run import:garmin -- garmin-export --dry-run   # preview, then run again without --dry-run
 ```
