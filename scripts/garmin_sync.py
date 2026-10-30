@@ -63,7 +63,12 @@ def sync(out: pathlib.Path, days: int):
 
     from garminconnect import Garmin
 
-    api = login()
+    try:
+        api = login()
+    except Exception as e:
+        print(f"Garmin login failed: {e}", file=sys.stderr)
+        print("If the account uses 2-step verification, create GARMIN_TOKENS with --print-token; if a saved token expired, create a new one.", file=sys.stderr)
+        return 1
     end = dt.date.today()
     start = end - dt.timedelta(days=days)
     activities = api.get_activities_by_date(start.isoformat(), end.isoformat())
