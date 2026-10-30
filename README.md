@@ -32,7 +32,10 @@ Built with React 18, Vite, TypeScript, Tailwind CSS v4 and Motion. It's a fully 
 │       ├── gym/                # The Gym + "Beat my reps" game
 │       ├── mountains/          # The Mountains journal + map
 │       └── founder/            # The Founder scrapbook
-├── scripts/garmin_sync.py      # Fetches recent hikes from Garmin Connect (weekly sync)
+├── scripts/
+│   ├── import-garmin.mjs       # Garmin export (CSV/GPX/TCX) → hikes.json
+│   ├── garmin_sync.py          # Downloads recent hikes from Garmin Connect (weekly sync)
+│   └── fixtures/               # Sample Garmin files used by the importer tests
 └── .github/workflows/
     ├── deploy.yml              # Auto-deploy to GitHub Pages
     └── garmin-sync.yml         # Weekly Garmin → hikes.json sync + redeploy
@@ -53,6 +56,8 @@ Other scripts:
 npm run build        # type-check + production build into dist/
 npm run preview      # serve the production build locally
 npm run typecheck    # TypeScript only
+npm run import:garmin -- <files>   # merge Garmin exports into hikes.json (see below)
+npm run test:garmin  # importer tests (run against temp copies, never the real data)
 ```
 
 ## Editing content
@@ -60,7 +65,7 @@ npm run typecheck    # TypeScript only
 You shouldn't need to touch any component to personalise the site.
 
 - **`src/data/content.ts`** holds the name, tagline, bio, links (email, LinkedIn, GitHub, Instagram), skills, projects, PRs, founder story and more. Change the `site.name` / `site.title` fields to rename the whole site (also update the `<title>` and meta tags in `index.html`, and regenerate `public/og-image.png` if you want the social preview to match).
-- **`src/data/hikes.json`** holds hikes (name, location, distance, elevation, difficulty, notes, photos) and the "dream adventures" bucket list.
+- **`src/data/hikes.json`** holds hikes (name, location, distance, elevation, difficulty, notes, photos) and the "dream adventures" bucket list. Real stats can come straight from Garmin, see [Hiking data from Garmin](#hiking-data-from-garmin).
 - **Photos:** drop files into `public/images/` and reference them in the data files as `images/your-file.jpg` (no leading slash — the site adds the correct base path automatically). Leave `src: ''` to show an illustrated placeholder instead. WebP/JPEG around 1200px wide keeps things fast.
 - **Placeholders:** any text wrapped in `[square brackets]` (e.g. `[Your city]`) is a placeholder. It's automatically highlighted with a dashed pink outline on the site so you can spot what still needs real info — replace it and the highlight disappears.
 
@@ -101,36 +106,56 @@ To build manually for a sub-path: `VITE_BASE=/my-repo/ npm run build`.
 
 You can re-run a deploy any time from the **Actions** tab ("Deploy to GitHub Pages" → *Run workflow*).
 
-## Garmin auto-sync (weekly)
+## Hiking data from Garmin
 
-`.github/workflows/garmin-sync.yml` runs every Monday at 06:00 UTC. It logs in to Garmin Connect, fetches your hiking, walking and mountaineering activities from the last 14 days (with GPX tracks for real elevation profiles), and merges them into `src/data/hikes.json`. If anything changed, it builds the site, commits the update to `main` and redeploys GitHub Pages. If nothing changed, it does nothing.
+Hikes in the Mountains world come from `src/data/hikes.json`. Instead of typing distances by hand, you can pull them from your Garmin watch. A hike imported from Garmin gets its real date, distance, elevation gain, moving and total time, high point and a **real elevation profile**. The journal page labels that profile "from Garmin", while hikes without a GPX track keep the illustrative curve.
 
-The merge never touches what you wrote by hand. Names, locations, photos, experience, takeaway and a difficulty you set yourself are kept. Only Garmin's numbers are refreshed: date, distance, elevation, times and the elevation profile. New hikes are added with `[placeholder]` text and an empty photo for you to fill in. A Garmin activity is linked to an existing hike by its Garmin ID, or, the first time, by a matching name on a hike whose date is still a placeholder (e.g. "Niagara Falls Hiking" → "Niagara Falls").
+The merge never overwrites what you wrote yourself. Name, location, photos, experience, takeaway and difficulty stay as they are. Only Garmin's numbers are refreshed. New hikes are added with `[placeholder]` text, an empty photo and an automatic difficulty (based on distance, climb and hours on the trail). A Garmin activity is matched to an existing hike by its Garmin activity ID. The first time, it's matched by name instead, on a hike whose date is still a placeholder: for example, "Niagara Falls Hiking" matches "Niagara Falls". Re-importing the same files changes nothing.
 
-### One-time setup
+Garmin's official API is only open to approved businesses, so there are two free options.
 
-1. In your repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add:
-   - `GARMIN_EMAIL`: the email you use to sign in to Garmin Connect
-   - `GARMIN_PASSWORD`: your Garmin Connect password
-2. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
-3. The workflow file must be on `main`. GitHub only runs scheduled workflows from the default branch.
+### Option 1 — export files by hand (recommended, nothing to set up)
 
-### Run it manually
+1. Sign in at [connect.garmin.com](https://connect.garmin.com) on a computer.
+2. **Stats for all your hikes:** **Activities → All Activities**, filter the type to **Hiking** (and Walking if you like), scroll down so every hike you want is loaded, then click **Export CSV** (top right). You get `Activities.csv`.
+3. **Real elevation profiles (optional, per hike):** open a hike, click the **⚙ gear icon** (top right) → **Export to GPX**. You get `activity_<id>.gpx`. Do this for each hike you want a profile for. TCX works too; FIT ("Export Original") doesn't, so pick GPX.
+4. Put the files in a folder (e.g. `garmin-export/`) and run:
 
-**Actions** tab → **Garmin weekly sync** → **Run workflow**. You can change how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. If you have the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=60`.
+   ```bash
+   npm run import:garmin -- garmin-export --dry-run   # preview what will change
+   npm run import:garmin -- garmin-export             # write src/data/hikes.json
+   ```
 
-To do the same thing on your own computer:
+   - If your Garmin account shows **miles/feet**, add `--imperial` (only matters for the CSV; GPX is always metric).
+   - To attach one GPX to a hike that's already on the site, use its id: `npm run import:garmin -- activity_123.gpx --as horseshoe-bend`.
+   - Other options: `--since 2025-01-01`, `--all-types` (don't skip runs/rides), `--out other.json`. See `npm run import:garmin -- --help`.
+
+5. Check `npm run dev`, fill in any `[placeholders]`, then commit `src/data/hikes.json` and push to `main`. The site redeploys automatically.
+
+Running the same hike through both the CSV and its GPX is fine: they are merged into one hike, with Garmin's own numbers from the CSV and the profile from the GPX. Don't commit the export folder (it contains your GPS tracks); `garmin-export/` is already git-ignored.
+
+### Option 2 — weekly automatic sync (unofficial)
+
+`.github/workflows/garmin-sync.yml` runs every Monday (and on demand). It signs in to Garmin Connect, downloads your hiking, walking, trail-running and mountaineering activities from the last 45 days (summary and GPX), runs the same importer, commits `src/data/hikes.json` to `main` if anything changed, and starts the Pages deploy. Without secrets it does nothing and still shows green.
+
+**Setup:**
+
+1. Get a login token on your own computer. This step handles Garmin's 2-step verification, which a scheduled job can't do:
+
+   ```bash
+   pip install garminconnect==0.3.20
+   python scripts/garmin_sync.py --print-token     # asks for email, password and MFA code
+   ```
+
+2. In the GitHub repo, go to **Settings → Secrets and variables → Actions → New repository secret** and add `GARMIN_TOKENS` with the JSON line it printed. Alternatively, if your account has no 2-step verification, add `GARMIN_EMAIL` and `GARMIN_PASSWORD` instead. You can also add them alongside the token as a fallback.
+3. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch). Then try it from **Actions → Sync hikes from Garmin → Run workflow**.
+4. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards.
+
+**Caveats:** this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. It is **not an official Garmin API**: Garmin can change its login or block GitHub's servers at any time, and saved tokens eventually expire. When that happens, the run fails with a short reason in the log and nothing is committed. Create a new token with `--print-token`, or fall back to Option 1. Secrets are stored encrypted by GitHub and are never shipped to the website. Garmin may email you about a "new sign-in" the first time.
+
+To run the sync on your own computer instead:
 
 ```bash
-pip install "garminconnect>=0.3,<0.4"
-GARMIN_EMAIL=you@example.com GARMIN_PASSWORD='…' python scripts/garmin_sync.py --out garmin-export --days 30
-node scripts/import-garmin.mjs garmin-export --dry-run   # preview, then run again without --dry-run
+GARMIN_TOKENS='<token json>' python scripts/garmin_sync.py --out garmin-export --days 90
+npm run import:garmin -- garmin-export
 ```
-
-### Caveats
-
-- **Unofficial connection.** Garmin has no public API for personal accounts, so this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. Garmin can change its login, add a captcha or block GitHub's servers at any time, and the sync will then stop working until the library catches up. When it fails, the run turns red with a plain-English reason at the top of the run page, and nothing is committed or deployed. Your site keeps working, it just doesn't get new hikes. You can always fall back to exporting files by hand and running `npm run import:garmin`.
-- **Two-step verification (MFA) must be off or handled.** A scheduled run can't type the code Garmin sends you, so with MFA on, the login fails with "Garmin asked for an MFA code". Either turn MFA off for your Garmin account, or handle it with saved login tokens:
-  1. On your own computer, run `GARMIN_EMAIL=… GARMIN_PASSWORD='…' python scripts/garmin_sync.py --save-tokens` and enter the MFA code when asked.
-  2. Copy the JSON it prints into a third repo secret named `GARMIN_TOKENS`. The workflow uses it instead of a fresh password login. When the tokens eventually expire (the log will say login failed), run step 1 again.
-- Your password is stored only as an encrypted GitHub secret and is never printed in logs. Garmin may email you about a "new sign-in" the first few times the workflow runs.
