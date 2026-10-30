@@ -1,40 +1,41 @@
 #!/usr/bin/env python3
 """Download recent hikes from Garmin Connect for scripts/import-garmin.mjs.
 
-Uses the free, *unofficial* `garminconnect` library (pip install -r scripts/requirements-garmin.txt),
-which logs in like the Garmin Connect website does. Garmin can change or block this at any time.
-
-Auth (first one found wins):
-  GARMIN_TOKENS                    token JSON printed by `python scripts/garmin_sync.py --print-token`
-                                   (recommended: works with 2-step verification / MFA)
-  GARMIN_EMAIL + GARMIN_PASSWORD   plain login (fails if the account has MFA enabled)
+Uses Garmin's official Connect Personal API (https://developer.garmin.com/gc-developer-program/personal/).
+Create a key at https://connect.garmin.com/app/settings/personalApiToken and store it as the
+GARMIN_API_KEY secret / environment variable. Only the Python standard library is needed.
 
 Usage:
-  python scripts/garmin_sync.py --out garmin-export [--days 45]
-  python scripts/garmin_sync.py --print-token      # run on your own computer, once
+  GARMIN_API_KEY=GCDC_... python scripts/garmin_sync.py --out garmin-export [--days 45]
   node scripts/import-garmin.mjs garmin-export     # then merge into src/data/hikes.json
 
-Writes <out>/activities.json (Garmin activity summaries) and <out>/activity_<id>.gpx per hike.
+Writes <out>/activities.json (Garmin activity summaries) and <out>/activity_<id>.gpx per hike
+(built from the activity's GPS + elevation samples).
 
-Exit codes: 0 ok, or no credentials configured (nothing to do)
+Exit codes: 0 ok, or no GARMIN_API_KEY configured (nothing to do)
             1 unexpected error
-            2 Garmin login failed (bad password, MFA, captcha, rate limit, expired token)
+            2 Garmin rejected the key (wrong, deleted or expired)
 """
 
 import argparse
 import datetime as dt
-import getpass
 import json
 import os
 import pathlib
 import sys
+import urllib.error
+import urllib.parse
+import urllib.request
+from xml.sax.saxutils import escape
 
-DEFAULT_TYPES = "hiking,walking,casual_walking,speed_walking,mountaineering"
-LOGIN_FAILED = 2
+API = "https://personal.connectapi.garmin.com"
+TOKEN_URL = f"{API}/personalapitoken-service/personal-api/personal-api-key/token"
+DEFAULT_TYPES = "hiking,mountaineering"
+KEY_REJECTED = 2
+PAGE = 100
 HINT = (
-    "Check the GARMIN_EMAIL / GARMIN_PASSWORD repo secrets. If the account uses 2-step verification (MFA), "
-    "create a GARMIN_TOKENS secret with `python scripts/garmin_sync.py --print-token`; "
-    "if a saved token expired, create a new one the same way."
+    "Check the GARMIN_API_KEY repo secret. Personal API keys expire (30 days to 1 year) and can be deleted; "
+    "create a new one at https://connect.garmin.com/app/settings/personalApiToken and update the secret."
 )
 
 
@@ -43,72 +44,91 @@ def gh_error(msg):
     print(f"::error title=Garmin sync::{msg}" if os.environ.get("GITHUB_ACTIONS") else f"error: {msg}", file=sys.stderr)
 
 
-def import_garmin():
+def request(url, headers, method="GET"):
+    req = urllib.request.Request(url, method=method, headers={"User-Agent": "yiyis-universe-garmin-sync", **headers})
     try:
-        import garminconnect
-    except ImportError:
-        gh_error("The garminconnect package is not installed: pip install -r scripts/requirements-garmin.txt")
-        sys.exit(1)
-    return garminconnect
+        with urllib.request.urlopen(req, timeout=60) as r:
+            return r.read()
+    except urllib.error.HTTPError as e:
+        if e.code in (401, 403):
+            gh_error(f"Garmin rejected the request ({e.code} {e.reason}). {HINT}")
+            sys.exit(KEY_REJECTED)
+        raise
 
 
-def login():
-    gc = import_garmin()
-    tokens = os.environ.get("GARMIN_TOKENS", "").strip()
-    email = os.environ.get("GARMIN_EMAIL", "").strip()
-    password = os.environ.get("GARMIN_PASSWORD", "")
-    try:
-        api = gc.Garmin(email or None, password or None, return_on_mfa=True)
-        result = api.login(tokens or None)
-    except gc.GarminConnectAuthenticationError as e:
-        gh_error(f"Garmin rejected the login ({e}). {HINT}")
-        sys.exit(LOGIN_FAILED)
-    except gc.GarminConnectTooManyRequestsError as e:
-        gh_error(f"Garmin is rate-limiting logins ({e}). Wait a few hours and run the workflow again.")
-        sys.exit(LOGIN_FAILED)
-    except gc.GarminConnectConnectionError as e:
-        gh_error(f"Couldn't reach Garmin Connect ({e}). It may be down or blocking GitHub's servers; try again later.")
-        sys.exit(LOGIN_FAILED)
-    except Exception as e:  # captcha pages, changed SSO flow, Cloudflare blocks, malformed token JSON, ...
-        gh_error(
-            f"Garmin login failed ({type(e).__name__}: {e}). Garmin may be showing a captcha or has changed its "
-            f"login flow, which breaks the unofficial client. {HINT}"
+def access_token(api_key):
+    body = request(TOKEN_URL, {"Authorization": f"ApiKey {api_key}"}, method="POST").decode().strip()
+    if body.startswith("{"):
+        body = json.loads(body).get("access_token", "")
+    if not body:
+        gh_error(f"Garmin returned no access token. {HINT}")
+        sys.exit(KEY_REJECTED)
+    return body
+
+
+class Client:
+    def __init__(self, token):
+        self.headers = {"Authorization": f"Bearer {token}", "Accept": "application/json"}
+
+    def get(self, path, **params):
+        url = f"{API}{path}" + (f"?{urllib.parse.urlencode(params)}" if params else "")
+        return json.loads(request(url, self.headers) or b"null")
+
+    def activities(self, start, end):
+        out = []
+        while True:
+            page = self.get(
+                "/activitylist-service/activities/search/activities",
+                start=len(out), limit=PAGE, startDate=start.isoformat(), endDate=end.isoformat(),
+            ) or []
+            out += page
+            if len(page) < PAGE:
+                return out
+
+    def gpx(self, activity):
+        aid = activity["activityId"]
+        d = self.get(f"/activity-service/activity/{aid}/details", maxChartSize=2000, maxPolylineSize=0)
+        idx = {m["key"]: m["metricsIndex"] for m in d.get("metricDescriptors") or []}
+        lat, lon, ele, ts = (idx.get(k) for k in ("directLatitude", "directLongitude", "directElevation", "directTimestamp"))
+        if lat is None or lon is None:
+            return None
+        pts = []
+        for row in d.get("activityDetailMetrics") or []:
+            m = row.get("metrics") or []
+            y, x = m[lat], m[lon]
+            if y is None or x is None:
+                continue
+            p = f'<trkpt lat="{y:.7f}" lon="{x:.7f}">'
+            if ele is not None and m[ele] is not None:
+                p += f"<ele>{m[ele]:.1f}</ele>"
+            if ts is not None and m[ts] is not None:
+                t = dt.datetime.fromtimestamp(m[ts] / 1000, dt.timezone.utc)
+                p += f"<time>{t.strftime('%Y-%m-%dT%H:%M:%SZ')}</time>"
+            pts.append(p + "</trkpt>")
+        if len(pts) < 2:
+            return None
+        name = escape(activity.get("activityName") or str(aid))
+        return (
+            '<?xml version="1.0" encoding="UTF-8"?>\n'
+            '<gpx version="1.1" creator="Garmin Connect Personal API" xmlns="http://www.topografix.com/GPX/1/1">\n'
+            f"<trk><name>{name}</name><type>{escape(activity['activityType']['typeKey'])}</type><trkseg>\n"
+            + "\n".join(pts)
+            + "\n</trkseg></trk>\n</gpx>\n"
         )
-        sys.exit(LOGIN_FAILED)
-    if isinstance(result, tuple) and result and result[0] == "needs_mfa":
-        gh_error(f"Garmin asked for an MFA code, which a scheduled workflow can't enter. {HINT}")
-        sys.exit(LOGIN_FAILED)
-    return api, gc.Garmin
-
-
-def print_token():
-    gc = import_garmin()
-    email = os.environ.get("GARMIN_EMAIL", "").strip() or input("Garmin email: ").strip()
-    password = os.environ.get("GARMIN_PASSWORD", "") or getpass.getpass("Garmin password: ")
-    api = gc.Garmin(email, password, prompt_mfa=lambda: input("MFA code (from email/app): ").strip())
-    try:
-        api.login()
-    except Exception as e:
-        gh_error(f"Garmin login failed ({type(e).__name__}: {e}).")
-        return LOGIN_FAILED
-    print("\nPaste everything on the next line into the GARMIN_TOKENS repository secret:\n")
-    print(api.client.dumps())
-    return 0
 
 
 def sync(out: pathlib.Path, days: int, types: set):
-    has_tokens = bool(os.environ.get("GARMIN_TOKENS", "").strip())
-    has_password = bool(os.environ.get("GARMIN_EMAIL", "").strip() and os.environ.get("GARMIN_PASSWORD"))
-    if not has_tokens and not has_password:
-        print("No Garmin credentials (GARMIN_TOKENS or GARMIN_EMAIL + GARMIN_PASSWORD); nothing to do.")
+    api_key = os.environ.get("GARMIN_API_KEY", "").strip()
+    if not api_key:
+        print("No GARMIN_API_KEY configured; nothing to do.")
         return 0
 
-    api, Garmin = login()
+    client = Client(access_token(api_key))
     end = dt.date.today()
     start = end - dt.timedelta(days=days)
-    activities = api.get_activities_by_date(start.isoformat(), end.isoformat()) or []
+    activities = client.activities(start, end)
     hikes = [a for a in activities if ((a.get("activityType") or {}).get("typeKey") or "").lower() in types]
-    print(f"Logged in. {len(activities)} activities since {start}, {len(hikes)} of them hikes/walks.")
+    print(f"{len(activities)} activities since {start}, {len(hikes)} of them hikes/walks.")
 
     out.mkdir(parents=True, exist_ok=True)
     (out / "activities.json").write_text(json.dumps(hikes, indent=2, default=str))
@@ -116,11 +136,14 @@ def sync(out: pathlib.Path, days: int, types: set):
         aid = a.get("activityId")
         label = f"{(a.get('startTimeLocal') or '')[:10]}  {a.get('activityName')}  ({aid})"
         try:
-            gpx = api.download_activity(str(aid), dl_fmt=Garmin.ActivityDownloadFormat.GPX)
-            (out / f"activity_{aid}.gpx").write_bytes(gpx)
+            gpx = client.gpx(a)
+        except urllib.error.URLError as e:
+            gpx, label = None, f"{label}: {e}"
+        if gpx:
+            (out / f"activity_{aid}.gpx").write_text(gpx)
             print(f"  ✓ {label}")
-        except Exception as e:  # indoor/manual activities have no GPS track; stats still come from activities.json
-            print(f"  · {label}: no GPX ({type(e).__name__}: {e})")
+        else:  # indoor/manual activities have no GPS track; stats still come from activities.json
+            print(f"  · {label}: no GPS track")
     print(f"Wrote {out}/activities.json")
     return 0
 
@@ -130,10 +153,7 @@ def main():
     p.add_argument("--out", type=pathlib.Path, default=pathlib.Path("garmin-export"), help="folder for activities.json + GPX files")
     p.add_argument("--days", type=int, default=45, help="how many days back to look (default: 45)")
     p.add_argument("--types", default=DEFAULT_TYPES, help=f"comma-separated Garmin activity types (default: {DEFAULT_TYPES})")
-    p.add_argument("--print-token", action="store_true", help="log in interactively (MFA ok) and print a GARMIN_TOKENS value")
     args = p.parse_args()
-    if args.print_token:
-        return print_token()
     types = {t.strip().lower() for t in args.types.split(",") if t.strip()}
     return sync(args.out, args.days, types)
 

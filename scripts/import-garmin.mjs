@@ -18,6 +18,7 @@
  *   --imperial       CSV distances are in miles and ascent/elevation in feet
  *   --all-types      don't filter to hiking / walking / trail running
  *   --since <date>   ignore activities before YYYY-MM-DD
+ *   --min-km <n>     ignore activities shorter than n km (e.g. watch restarts mid-hike)
  *
  * Hand-written fields (name, location, photos, experience, takeaway, difficulty) are never
  * overwritten. Stats, date and elevation profile are refreshed from Garmin.
@@ -44,6 +45,7 @@ function parseArgs(argv) {
     else if (a === '--imperial') opts.imperial = true
     else if (a === '--all-types') opts.allTypes = true
     else if (a === '--since') opts.since = argv[++i]
+    else if (a === '--min-km') opts.minKm = Number(argv[++i])
     else if (a === '-h' || a === '--help') opts.help = true
     else if (a.startsWith('--')) throw new Error(`Unknown option ${a}`)
     else opts.inputs.push(a)
@@ -417,7 +419,7 @@ function findExisting(hikes, rec, slugId, opts) {
     const byGarmin = hikes.find((h) => String(h.garminActivityId ?? '') === rec.activityId)
     if (byGarmin) return byGarmin
   }
-  const byId = hikes.find((h) => h.id === slugId)
+  const byId = hikes.find((h) => h.id === slugId && (!h.garminActivityId || !rec.activityId))
   if (byId) return byId
   // "Niagara Falls Hiking" → existing "Niagara Falls" hike that hasn't been linked to Garmin yet.
   const title = ` ${slugify(rec.name).replace(/-/g, ' ')} `
@@ -464,8 +466,11 @@ export function mergeHikes(data, records, opts = {}) {
       if (isPlaceholder(existing.location) && rec.locationName) existing.location = rec.locationName
       report.push({ action: before === JSON.stringify(existing) ? 'unchanged' : 'updated', hike: existing, rec })
     } else {
+      const taken = new Set([...hikes, ...added].map((h) => h.id))
+      let id = slugId
+      for (let n = 2; taken.has(id); n++) id = `${slugId}-${n}`
       const hike = {
-        id: slugId,
+        id,
         name: rec.name,
         location: rec.locationName || '[Where was this?]',
         ...stats,
@@ -548,7 +553,11 @@ async function main() {
     }
   }
 
-  const combined = combine(records)
+  let combined = combine(records)
+  if (opts.minKm > 0) {
+    for (const r of combined) if (r.distanceKm < opts.minKm) skipped.push({ file: r.name, skip: `${round(r.distanceKm, 1)} km is under --min-km ${opts.minKm}` })
+    combined = combined.filter((r) => !(r.distanceKm < opts.minKm))
+  }
   if (opts.as && combined.length !== 1) throw new Error(`--as needs exactly one activity, got ${combined.length}`)
 
   const data = JSON.parse(fs.readFileSync(opts.data, 'utf8'))

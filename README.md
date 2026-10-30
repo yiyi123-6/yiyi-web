@@ -34,8 +34,7 @@ Built with React 18, Vite, TypeScript, Tailwind CSS v4 and Motion. It's a fully 
 │       └── founder/            # The Founder scrapbook
 ├── scripts/
 │   ├── import-garmin.mjs       # Garmin export (CSV/GPX/TCX) → hikes.json
-│   ├── garmin_sync.py          # Downloads recent hikes from Garmin Connect (weekly sync)
-│   ├── requirements-garmin.txt # Python dependency for garmin_sync.py
+│   ├── garmin_sync.py          # Downloads recent hikes via Garmin's Personal API (weekly sync)
 │   └── fixtures/               # Sample Garmin files used by the importer tests
 └── .github/workflows/
     ├── deploy.yml              # Auto-deploy to GitHub Pages
@@ -113,7 +112,7 @@ Hikes in the Mountains world come from `src/data/hikes.json`. Instead of typing 
 
 The merge never overwrites what you wrote yourself. Name, location, photos, experience, takeaway and difficulty stay as they are. Only Garmin's numbers are refreshed. New hikes are added with `[placeholder]` text, an empty photo and an automatic difficulty (based on distance, climb and hours on the trail). A Garmin activity is matched to an existing hike by its Garmin activity ID. The first time, it's matched by name instead, on a hike whose date is still a placeholder: for example, "Niagara Falls Hiking" matches "Niagara Falls". Re-importing the same files changes nothing.
 
-Garmin's official API is only open to approved businesses, so there are two free options.
+There are two free options: export files by hand, or let a weekly job fetch them with Garmin's official Personal API.
 
 ### Option 1 — export files by hand (recommended, nothing to set up)
 
@@ -129,39 +128,30 @@ Garmin's official API is only open to approved businesses, so there are two free
 
    - If your Garmin account shows **miles/feet**, add `--imperial` (only matters for the CSV; GPX is always metric).
    - To attach one GPX to a hike that's already on the site, use its id: `npm run import:garmin -- activity_123.gpx --as horseshoe-bend`.
-   - Other options: `--since 2025-01-01`, `--all-types` (don't skip runs/rides), `--out other.json`. See `npm run import:garmin -- --help`.
+   - Other options: `--since 2025-01-01`, `--min-km 2` (skip short fragments, e.g. when the watch was restarted mid-hike), `--all-types` (don't skip runs/rides), `--out other.json`. See `npm run import:garmin -- --help`.
 
 5. Check `npm run dev`, fill in any `[placeholders]`, then commit `src/data/hikes.json` and push to `main`. The site redeploys automatically.
 
 Running the same hike through both the CSV and its GPX is fine: they are merged into one hike, with Garmin's own numbers from the CSV and the profile from the GPX. Don't commit the export folder (it contains your GPS tracks); `garmin-export/` is already git-ignored.
 
-### Option 2 — weekly automatic sync (unofficial)
+### Option 2 — weekly automatic sync (official Personal API)
 
-`.github/workflows/garmin-sync.yml` ("Garmin weekly sync") runs every Monday at 06:17 UTC and on demand. It signs in to Garmin Connect and downloads your hiking, walking and mountaineering activities from the last 45 days (summary and GPX), then runs the same importer. If `src/data/hikes.json` changed, it builds the site, commits the file to `main` and redeploys GitHub Pages in the same run. If nothing changed, nothing is committed or deployed. Without secrets it does nothing and still shows green.
+`.github/workflows/garmin-sync.yml` ("Garmin weekly sync") runs every Monday at 06:17 UTC and on demand. It uses Garmin's official [Connect Personal API](https://developer.garmin.com/gc-developer-program/personal/personal-api) to download your hiking and mountaineering activities from the last 45 days (summary plus GPS and elevation track), skips fragments shorter than 2 km, then runs the same importer. If `src/data/hikes.json` changed, it builds the site, commits the file to `main` and redeploys GitHub Pages in the same run. If nothing changed, nothing is committed or deployed. Without the secret it does nothing and still shows green.
 
 **Setup:**
 
-1. Add the secrets in the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**.
-   - **No 2-step verification on your Garmin account:** add `GARMIN_EMAIL` (your Garmin Connect sign-in email) and `GARMIN_PASSWORD`.
-   - **2-step verification (MFA) on:** a scheduled job can't type the code, so either turn MFA off or create a login token once on your own computer, and save the JSON line it prints as `GARMIN_TOKENS`:
+1. Create a key at [Garmin Connect → Personal API Key](https://connect.garmin.com/app/settings/personalApiToken) (**Create Key**, accept the terms, choose the longest expiry, 1 year). It's only shown once, so copy it straight into the next step.
+2. In the GitHub repo: **Settings → Secrets and variables → Actions → New repository secret**, name `GARMIN_API_KEY`, value the key (it starts with `GCDC_`). Never put the key in the code or a commit.
+3. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
+4. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch).
+5. Run it once by hand: **Actions → Garmin weekly sync → Run workflow**. You can set how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. With the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=90`.
+6. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards. Later syncs keep your edits.
 
-     ```bash
-     pip install -r scripts/requirements-garmin.txt
-     python scripts/garmin_sync.py --print-token     # asks for email, password and MFA code
-     ```
+**When the key expires:** Garmin emails you about a week before. Create a new key and paste it over the `GARMIN_API_KEY` secret. If the key is wrong, deleted or expired, the run turns red with a plain-English reason and nothing is committed or deployed; the site keeps working. The key is stored encrypted by GitHub and never shipped to the website. If it ever leaks, delete it on the Garmin page and create a new one.
 
-     You can keep `GARMIN_EMAIL` / `GARMIN_PASSWORD` alongside the token; the token is tried first.
-2. Make sure **Settings → Pages → Source** is **GitHub Actions** (same as for the normal deploy).
-3. Merge this branch into `main` (GitHub only runs scheduled workflows from the default branch).
-4. Run it once by hand: **Actions → Garmin weekly sync → Run workflow**. You can set how many days back to look, and tick *force_deploy* to rebuild the site even when no hikes changed. With the [GitHub CLI](https://cli.github.com/): `gh workflow run garmin-sync.yml -f days=90`.
-5. New hikes appear on the site with placeholder text, so edit their name, location, story and photos in `src/data/hikes.json` afterwards. Later syncs keep your edits.
-
-**Caveats:** this uses the community [`garminconnect`](https://github.com/cyberjunky/python-garminconnect) library, which signs in the way the Garmin website does. It is **not an official Garmin API**. Garmin can change its login, show a captcha or block GitHub's servers at any time, and saved tokens eventually expire. When the login fails, the run turns red with a plain-English reason at the top of the run page, and nothing is committed or deployed. The site keeps working; it just doesn't get new hikes. Create a new token with `--print-token`, or fall back to Option 1. Secrets are stored encrypted by GitHub and are never shipped to the website. Garmin may email you about a "new sign-in" the first time.
-
-To run the sync on your own computer instead:
+To run the sync on your own computer instead (Python 3.10+, no packages needed):
 
 ```bash
-pip install -r scripts/requirements-garmin.txt
-GARMIN_TOKENS='<token json>' python scripts/garmin_sync.py --out garmin-export --days 90   # or GARMIN_EMAIL + GARMIN_PASSWORD
-npm run import:garmin -- garmin-export --dry-run   # preview, then run again without --dry-run
+GARMIN_API_KEY='GCDC_...' python scripts/garmin_sync.py --out garmin-export --days 90
+npm run import:garmin -- garmin-export --min-km 2 --dry-run   # preview, then run again without --dry-run
 ```
