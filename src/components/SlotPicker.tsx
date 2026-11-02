@@ -16,7 +16,6 @@ type Props = {
   defaultDurationMin: number
   /** Bump to refetch availability (e.g. after the relay says a slot was just taken). */
   refreshKey?: number
-  encouraged?: boolean
 }
 
 type Load = { state: 'loading' } | { state: 'ok'; busy: Busy[] } | { state: 'error' }
@@ -30,7 +29,7 @@ const sameStart = (a: Slot, b: Slot) => a.start.getTime() === b.start.getTime()
  * Folded by default. Opens to a month calendar where visitors pick up to MAX_OPTIONS start times.
  * Busy blocks from Yiyi's calendars and her work hours are greyed out (busy blocks never carry details).
  */
-export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0, encouraged }: Props) {
+export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0 }: Props) {
   const [now] = useState(() => new Date())
   const visitorTz = useMemo(localTz, [])
   const differs = !sameClock(visitorTz, YIYI_TZ, now)
@@ -142,8 +141,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
             </span>
             <span className="min-w-0">
               <span className="block font-display text-lg font-black leading-tight">
-                {encouraged ? 'Pick a date & time' : 'Suggest a date & time'}
-                {!encouraged && <span className="ml-1 text-sm font-semibold text-ink/50">(optional)</span>}
+                Pick a date & time
               </span>
               <span className="block text-xs text-ink/60">Offer up to {MAX_OPTIONS} times and {site.name} picks the one that works ♡</span>
             </span>
@@ -181,7 +179,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-display text-xl font-black">
-            <CalendarHeart size={20} className="text-hot" /> {value.length ? 'Add another time' : encouraged ? 'Pick a date & time' : 'Suggest a date & time'}
+            <CalendarHeart size={20} className="text-hot" /> {value.length ? 'Add another time' : 'Pick a date & time'}
           </p>
           <p className="text-xs text-ink/60">
             Times are in {site.name}'s time (Toronto){differs && <> · you'll see yours too ({visitorTz.replace(/_/g, ' ')})</>}
@@ -212,7 +210,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
       </div>
       {fitsOnWeekdays(duration) ? (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-ink/60" data-testid="work-note">
-          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> {WORK_HOURS_LABEL} (Toronto) is work time. Mornings, evenings and weekends are open ♡
+          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> {WORK_HOURS_LABEL} (Toronto) is work time, so weekdays open at 7 PM. Weekends are wide open ♡
         </p>
       ) : (
         <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-baby px-3 py-2 text-sm font-semibold" data-testid="work-note">

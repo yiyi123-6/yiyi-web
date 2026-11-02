@@ -15,8 +15,8 @@ export const MAX_OPTIONS = 5
  * Never bookable, in Yiyi's time. Days: 0 = Sunday … 6 = Saturday. Minutes after midnight.
  * Keep in sync with CONFIG.WORK_HOURS in scripts/invite-relay.gs.
  */
-export const WORK_HOURS = { days: [1, 2, 3, 4, 5], startMin: 9 * 60, endMin: 19 * 60 }
-export const WORK_HOURS_LABEL = 'Mon–Fri 9 AM–7 PM'
+export const WORK_HOURS = { days: [1, 2, 3, 4, 5], startMin: 6 * 60, endMin: 19 * 60 }
+export const WORK_HOURS_LABEL = 'Mon–Fri 6 AM–7 PM'
 export const DURATIONS_MIN = [30, 60, 90, 120, 180, 240, 300, 360, 480, 540, 600, 720]
 
 export type Busy = { start: number; end: number }
@@ -163,39 +163,6 @@ export function describeSlot(slot: Slot, tz: string, now = new Date()) {
   if (zonedParts(slot.start, tz).y !== zonedParts(now, tz).y) opts.year = 'numeric'
   const sameDay = dayLabel(slot.start, tz) === dayLabel(slot.end, tz)
   return `${dayLabel(slot.start, tz, opts)} · ${timeLabel(slot.start, tz)} – ${sameDay ? '' : `${dayLabel(slot.end, tz)}, `}${timeLabel(slot.end, tz)} ${zoneName(slot.end, tz)}`
-}
-
-/** "20261114T140000Z" */
-export const utcStamp = (d: Date) => d.toISOString().replace(/[-:]/g, '').replace(/\.\d{3}/, '')
-
-export type CalendarEvent = { title: string; details: string; slot: Slot; guest: string }
-
-export function googleCalendarUrl({ title, details, slot, guest }: CalendarEvent) {
-  const q = new URLSearchParams({ action: 'TEMPLATE', text: title, details, add: guest })
-  return `https://calendar.google.com/calendar/render?${q.toString()}&dates=${utcStamp(slot.start)}/${utcStamp(slot.end)}`
-}
-
-const icsText = (s: string) => s.replace(/\\/g, '\\\\').replace(/\r?\n/g, '\\n').replace(/[,;]/g, (c) => `\\${c}`)
-
-/** A minimal .ics the visitor can open in any calendar app, with Yiyi as a guest. */
-export function icsFor({ title, details, slot, guest }: CalendarEvent, now = new Date()) {
-  return [
-    'BEGIN:VCALENDAR',
-    'VERSION:2.0',
-    "PRODID:-//Yiyi's Universe//Invite//EN",
-    'METHOD:PUBLISH',
-    'BEGIN:VEVENT',
-    `UID:${utcStamp(slot.start)}-${Math.random().toString(36).slice(2)}@yiyis-universe`,
-    `DTSTAMP:${utcStamp(now)}`,
-    `DTSTART:${utcStamp(slot.start)}`,
-    `DTEND:${utcStamp(slot.end)}`,
-    `SUMMARY:${icsText(title)}`,
-    `DESCRIPTION:${icsText(details)}`,
-    `ATTENDEE;CN=Yiyi;RSVP=TRUE:mailto:${guest}`,
-    'END:VEVENT',
-    'END:VCALENDAR',
-    '',
-  ].join('\r\n')
 }
 
 /** Lines for an email body: Yiyi's time, plus the visitor's when it differs. */

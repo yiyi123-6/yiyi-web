@@ -1,18 +1,16 @@
 import { useMemo, useRef, useState, type FormEvent } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { CalendarPlus, Check, Download, Loader2, Mail, Send } from 'lucide-react'
-import { links, site } from '../data/content'
+import { CalendarClock, Check, Loader2, RotateCw, Send } from 'lucide-react'
+import { site } from '../data/content'
 import { confettiFrom } from '../lib/confetti'
-import { YIYI_TZ, dayLabel, googleCalendarUrl, icsFor, localTz, timeLabel, whenLines, type Slot } from '../lib/calendar'
-import { InviteError, canSendDirectly, isEmail, mailtoFor, sendInvite } from '../lib/invite'
+import { YIYI_TZ, dayLabel, localTz, timeLabel, whenLines, type Slot } from '../lib/calendar'
+import { InviteError, canSendDirectly, isEmail, sendInvite } from '../lib/invite'
 import { SlotPicker } from './SlotPicker'
 
 export type Booking = {
   /** Short name for the calendar event, e.g. "All-day mountain hike". */
   activity: string
   durationMin: number
-  /** Nudges visitors to pick a time (still optional). */
-  encouraged?: boolean
 }
 
 type Props = {
@@ -54,10 +52,6 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
     : slots.length > 1 ? `${subject} · ${slots.length} time options` : subject
   const signed = name.trim() ? `${msg}\n\n— ${name.trim()}` : msg
   const body = timed ? `${signed}\n\n${whenLines(slots, visitorTz)}` : signed
-  const events = booking
-    ? slots.map((slot) => ({ title: `${booking.activity} with ${site.name} ♡`, details: `${signed}\n\nSent via ${source}`, slot, guest: links.email }))
-    : []
-
   const pickSlots = (s: Slot[]) => {
     setSlots(s)
     if (status === 'error') setStatus('idle')
@@ -70,10 +64,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
       setError(`Add your email so ${site.name} can reply.`)
       return
     }
-    if (!canSendDirectly) {
-      window.location.href = mailtoFor(fullSubject, body)
-      return
-    }
+    if (!canSendDirectly) return
     setStatus('sending')
     setError('')
     try {
@@ -101,7 +92,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         setError(err.message)
       } else {
         setRelayDown(true)
-        setError("Couldn't reach the mail relay.")
+        setError(`Couldn't reach ${site.name}'s calendar just now. Give it a moment and try again ♡`)
       }
     }
   }
@@ -134,32 +125,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         </label>
       )}
       {booking && (
-        <SlotPicker value={slots} onChange={pickSlots} defaultDurationMin={booking.durationMin} refreshKey={refreshKey} encouraged={booking.encouraged} />
-      )}
-      {events.length > 0 && (!canSendDirectly || relayDown) && (
-        <div className="rounded-2xl border-2 border-dashed border-ink/30 p-3 text-sm" data-testid="calendar-links">
-          <p className="font-semibold">Make it official:</p>
-          <ul className="mt-2 space-y-1.5">
-            {events.map((ev, i) => (
-              <li key={ev.slot.start.getTime()} className="flex flex-wrap items-center gap-2">
-                {events.length > 1 && <span className="mr-1 text-xs font-bold text-ink/60">#{i + 1} {dayLabel(ev.slot.start, YIYI_TZ)}, {timeLabel(ev.slot.start, YIYI_TZ)}</span>}
-                <a href={googleCalendarUrl(ev)} target="_blank" rel="noreferrer" className="btn-cream !px-3 !py-1 text-sm" data-option={i + 1}>
-                  <CalendarPlus size={15} /> Google Calendar
-                </a>
-                <a
-                  href={`data:text/calendar;charset=utf-8,${encodeURIComponent(icsFor(ev))}`}
-                  download={`plans-with-${site.name.toLowerCase()}${events.length > 1 ? `-${i + 1}` : ''}.ics`}
-                  className="btn-cream !px-3 !py-1 text-sm"
-                >
-                  <Download size={15} /> .ics
-                </a>
-              </li>
-            ))}
-          </ul>
-          <p className="mt-2 text-xs text-ink/55">
-            Adds {site.name} ({links.email}) as a guest, so she gets a real calendar invite{events.length > 1 ? ' for each time and accepts the one that works' : ' to accept'}.
-          </p>
-        </div>
+        <SlotPicker value={slots} onChange={pickSlots} defaultDurationMin={booking.durationMin} refreshKey={refreshKey} />
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">
@@ -181,20 +147,23 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         </label>
       </div>
       <div className="flex flex-wrap items-center gap-3">
-        <button ref={btn} type="submit" disabled={status === 'sending'} className="btn-hot">
-          {status === 'sending'
-            ? <><Loader2 size={18} className="animate-spin" /> Sending…</>
-            : <><Send size={18} /> {slots.length > 1 ? `Send ${slots.length} times to ${site.name}` : timed ? `Request this time with ${site.name}` : `Send invite to ${site.name}`}</>}
-        </button>
+        {canSendDirectly ? (
+          <button ref={btn} type="submit" disabled={status === 'sending'} className="btn-hot">
+            {status === 'sending'
+              ? <><Loader2 size={18} className="animate-spin" /> Sending…</>
+              : relayDown
+                ? <><RotateCw size={18} /> Try again</>
+                : <><Send size={18} /> {slots.length > 1 ? `Send ${slots.length} times to ${site.name}` : timed ? `Request this time with ${site.name}` : `Send invite to ${site.name}`}</>}
+          </button>
+        ) : (
+          <p className="flex items-center gap-2 rounded-full border-2 border-dashed border-ink/40 bg-blush px-4 py-2.5 text-sm font-semibold" role="status" data-testid="booking-soon">
+            <CalendarClock size={18} className="shrink-0 text-hot" /> Booking opens soon ♡ {site.name} is setting up her calendar
+          </p>
+        )}
         <AnimatePresence>
           {status === 'error' && (
             <motion.p initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="text-sm font-semibold text-berry" role="alert">
-              {error}{' '}
-              {relayDown && (
-                <a href={mailtoFor(fullSubject, body)} className="inline-flex items-center gap-1 underline">
-                  <Mail size={14} /> send it from your email app instead
-                </a>
-              )}
+              {error}
             </motion.p>
           )}
         </AnimatePresence>

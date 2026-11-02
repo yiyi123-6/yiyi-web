@@ -57,8 +57,4 @@ export async function fetchAvailability(from: Date, to: Date, signal?: AbortSign
   }
 }
 
-export function mailtoFor(subject: string, body: string) {
-  return `mailto:${links.email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`
-}
-
 export const isEmail = (s: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())
