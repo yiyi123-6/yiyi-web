@@ -69,15 +69,36 @@ You shouldn't need to touch any component to personalise the site.
 - **Photos:** drop files into `public/images/` and reference them in the data files as `images/your-file.jpg` (no leading slash — the site adds the correct base path automatically). Leave `src: ''` to show an illustrated placeholder instead. WebP/JPEG around 1200px wide keeps things fast.
 - **Placeholders:** any text wrapped in `[square brackets]` (e.g. `[Your city]`) is a placeholder. It's automatically highlighted with a dashed pink outline on the site so you can spot what still needs real info — replace it and the highlight disappears.
 
-## Invites straight to Gmail
+## Invites + calendar
 
-The Tiny AI's **Invite Yiyi ♡** button and the Connect page send invites through your own Google Apps Script relay. It runs as you, so every invite is sent **from your Gmail to your Gmail**, and replying to it answers the visitor. It's free and doesn't need a server. Set it up once:
+The Tiny AI's **Invite Yiyi ♡** button and the Connect page have a date & time picker. Visitors pick a day (next 6 weeks) and a start time (6:00–22:00 Toronto time, 30-minute steps; plans of 5+ hours only start in the morning). The duration defaults to the activity (e.g. 9 hrs for the all-day hike, 1.5 hrs for a lifting session) and visitors can change it. Times are shown in your time (Toronto) and in the visitor's own time when it's different.
 
-1. Open [script.google.com](https://script.google.com), click **New project**, paste in `scripts/invite-relay.gs`, and save.
-2. Click **Deploy → New deployment → Web app**. Set **Execute as: Me** and **Who has access: Anyone**, then click **Deploy** and authorize.
-3. Copy the **Web app URL** (it ends in `/exec`) into `links.inviteScriptUrl` in `src/data/content.ts`, then commit and push.
+Everything goes through your own Google Apps Script relay, `scripts/invite-relay.gs`. It runs as **yiyitan076@gmail.com**, is free, and doesn't need a server.
 
-Until `inviteScriptUrl` is set, the form opens the visitor's own email app with the invite already written. If the relay is ever unreachable, the form shows a "send it from your email app" link.
+**How a booking works**
+
+1. The picker asks the relay for busy times from **both** calendars (yiyitan076@gmail.com and ee.official67@gmail.com) and greys those slots out.
+2. The visitor sends the request. The relay checks both calendars again; if the slot was just taken, the visitor is asked to pick another time.
+3. A pink **"♡ Request: <activity> with <name>"** hold goes on your yiyitan076 calendar, and you get an email with the time plus **Accept** and **Decline** buttons. The visitor is not invited yet.
+4. **Accept** sends the visitor a real Google Calendar invite from you (the hold becomes "♡ <activity> with <name>"). **Decline** removes the hold and emails them a kind "that time doesn't work" note from your Gmail. Each link opens a confirmation page first, so nothing happens until you click the button there, and each link works once.
+
+**Setup (once)**
+
+1. **Share the second calendar.** Sign in as **ee.official67@gmail.com** → [Google Calendar](https://calendar.google.com) → ⚙️ **Settings** → under *Settings for my calendars* pick the calendar → **Share with specific people or groups** → **Add people** → `yiyitan076@gmail.com` with **See only free/busy (hide details)** (that's enough; "See all event details" works too) → **Send**. If yiyitan076 gets an email about it, open it and add the calendar.
+2. **Paste the script.** Open [script.google.com](https://script.google.com) as **yiyitan076@gmail.com**. Open your existing invite project (or click **New project**), replace everything with `scripts/invite-relay.gs`, and save. The calendars are set at the top in `CONFIG.CALENDAR_IDS` (`'primary'` is yiyitan076's own calendar and is where holds go; then `'ee.official67@gmail.com'`).
+3. **Deploy.**
+   - First time: **Deploy → New deployment → Web app**, **Execute as: Me**, **Who has access: Anyone** → **Deploy**.
+   - Already deployed before: **Deploy → Manage deployments → ✏️ Edit → Version: New version → Deploy**. The `/exec` URL stays the same. Saving the file alone does **not** update the live web app.
+4. **Authorize.** Google asks for permission to send email, manage your calendars and connect to an external service (the Calendar free/busy API). The script now needs Calendar access, so you'll be asked to authorize again even if you did before. If you see "Google hasn't verified this app", click **Advanced → Go to (project name)**; it's your own script.
+5. Copy the **Web app URL** (it ends in `/exec`) into `links.inviteScriptUrl` in `src/data/content.ts`, then commit and push.
+
+To check it works, open `<your /exec URL>?action=availability` in a browser. You should see `"success":true` and a list of busy blocks. If `calendarsMissing` lists `ee.official67@gmail.com`, the share from step 1 hasn't reached yiyitan076 yet; the site keeps working with just your own busy times.
+
+**Privacy.** The public availability endpoint only ever returns busy start/end times, merged across both calendars. Event titles, descriptions, guests and locations are never sent to the website. There are no keys or secrets in the site's code: the relay runs inside your Google account, and Accept/Decline links use one-time random tokens stored in the script's properties. The honeypot field and the 30-invites-per-hour limit are still in place.
+
+**Before the relay is set up** (`inviteScriptUrl: ''`), the picker still works without live busy times. Sending opens the visitor's email app with the exact date and time (both time zones) already written, and they also get **Add to Google Calendar** and **.ics** buttons that add yiyitan076@gmail.com as a guest, so you receive a real calendar invite you can accept. If the relay is ever unreachable, the form shows a "send it from your email app" link.
+
+Relay tests (runs the script's logic in Node with fake Google services): `npm run test:invite`.
 
 ## Easter eggs
 

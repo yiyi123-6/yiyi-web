@@ -92,80 +92,88 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
         {duration >= 300 && <span className="text-xs font-normal text-ink/50">big days start in the morning</span>}
       </label>
 
-      <div className="mt-4">
-        <p className="mb-1 text-xs font-bold uppercase tracking-wider text-ink/60">{monthTitle}</p>
-        <div className="grid grid-cols-7 gap-1 text-center" role="group" aria-label="Pick a day">
-          {WEEKDAYS.map((w, i) => <span key={i} className="text-[0.65rem] font-bold text-ink/40" aria-hidden>{w}</span>)}
-          {Array.from({ length: pad }, (_, i) => <span key={`pad-${i}`} aria-hidden />)}
-          {days.map((d) => {
-            const on = d.key === dayKey
-            const free = freeDay(d)
-            const label = dayLabel(new Date(Date.UTC(d.y, d.m - 1, d.d, 12)), 'UTC', { weekday: 'long', month: 'long', day: 'numeric' })
-            return (
-              <button
-                key={d.key}
-                type="button"
-                disabled={!free}
-                onClick={() => setDayKey(d.key)}
-                aria-pressed={on}
-                aria-label={`${label}${free ? '' : ' (no free times)'}`}
-                data-day={d.key}
-                className={`relative aspect-square min-w-0 rounded-xl border-2 text-sm font-bold transition sm:aspect-[4/3] ${
-                  on
-                    ? 'border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D]'
-                    : free
-                      ? 'border-ink/15 bg-blush hover:border-ink hover:bg-baby'
-                      : 'cursor-not-allowed border-transparent bg-ink/5 text-ink/25 line-through'
-                }`}
-              >
-                {d.d === 1 && <span className="absolute left-1 top-0.5 text-[0.55rem] font-bold uppercase opacity-70">{dayLabel(new Date(Date.UTC(d.y, d.m - 1, 1, 12)), 'UTC', { month: 'short' })}</span>}
-                {d.d}
-              </button>
-            )
-          })}
+      <div className="mt-4 grid gap-4 md:grid-cols-[minmax(0,19rem)_minmax(0,1fr)]">
+        <div>
+          <p className="mb-1 text-xs font-bold uppercase tracking-wider text-ink/60">{monthTitle}</p>
+          <div className="grid grid-cols-7 gap-1 text-center" role="group" aria-label="Pick a day">
+            {WEEKDAYS.map((w, i) => <span key={i} className="text-[0.65rem] font-bold text-ink/40" aria-hidden>{w}</span>)}
+            {Array.from({ length: pad }, (_, i) => <span key={`pad-${i}`} aria-hidden />)}
+            {days.map((d) => {
+              const on = d.key === dayKey
+              const free = freeDay(d)
+              const label = dayLabel(new Date(Date.UTC(d.y, d.m - 1, d.d, 12)), 'UTC', { weekday: 'long', month: 'long', day: 'numeric' })
+              return (
+                <button
+                  key={d.key}
+                  type="button"
+                  disabled={!free}
+                  onClick={() => setDayKey(d.key)}
+                  aria-pressed={on}
+                  aria-label={`${label}${free ? '' : ' (no free times)'}`}
+                  data-day={d.key}
+                  className={`flex h-10 min-w-0 flex-col items-center justify-center rounded-xl border-2 text-sm font-bold leading-none transition ${
+                    on
+                      ? 'border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D]'
+                      : free
+                        ? 'border-ink/15 bg-blush hover:border-ink hover:bg-baby'
+                        : 'cursor-not-allowed border-transparent bg-ink/5 text-ink/25 line-through'
+                  }`}
+                >
+                  {d.d === 1 && <span className="text-[0.5rem] uppercase opacity-70">{dayLabel(new Date(Date.UTC(d.y, d.m - 1, 1, 12)), 'UTC', { month: 'short' })}</span>}
+                  {d.d}
+                </button>
+              )
+            })}
+          </div>
+        </div>
+
+        <div>
+          <AnimatePresence initial={false} mode="wait">
+            {selectedDay ? (
+              <motion.div key={selectedDay.key} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }}>
+                <p className="mb-2 text-xs font-bold uppercase tracking-wider text-ink/60">
+                  Start time · {dayLabel(new Date(Date.UTC(selectedDay.y, selectedDay.m - 1, selectedDay.d, 12)), 'UTC', { weekday: 'long', month: 'short', day: 'numeric' })}
+                </p>
+                <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4" role="listbox" aria-label="Pick a start time">
+                  {daySlots.map((s) => {
+                    const on = value?.start.getTime() === s.start.getTime()
+                    return (
+                      <button
+                        key={s.minutes}
+                        type="button"
+                        role="option"
+                        aria-selected={on}
+                        disabled={s.busy}
+                        data-slot={s.start.toISOString()}
+                        data-busy={s.busy || undefined}
+                        onClick={() => onChange({ start: s.start, end: s.end })}
+                        className={`min-w-0 rounded-xl border-2 px-1 py-1.5 text-center leading-tight transition ${
+                          on
+                            ? 'border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D]'
+                            : s.busy
+                              ? 'cursor-not-allowed border-dashed border-ink/20 bg-ink/5 text-ink/30'
+                              : 'border-ink/20 bg-blush hover:border-ink hover:bg-baby'
+                        }`}
+                      >
+                        <span className={`block text-sm font-bold ${s.busy ? 'line-through' : ''}`}>{timeLabel(s.start, YIYI_TZ)}</span>
+                        {s.busy ? (
+                          <span className="block text-[0.65rem] font-semibold uppercase">busy</span>
+                        ) : differs ? (
+                          <span className={`block text-[0.65rem] ${on ? 'text-cream/85' : 'text-ink/50'}`}>you: {timeLabel(s.start, visitorTz)}</span>
+                        ) : null}
+                      </button>
+                    )
+                  })}
+                </div>
+              </motion.div>
+            ) : (
+              <motion.p key="hint" initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="grid h-full min-h-24 place-items-center rounded-2xl border-2 border-dashed border-ink/20 p-4 text-center font-hand text-2xl text-berry">
+                pick a day to see start times ♡
+              </motion.p>
+            )}
+          </AnimatePresence>
         </div>
       </div>
-
-      <AnimatePresence initial={false}>
-        {selectedDay && (
-          <motion.div key={selectedDay.key} initial={{ opacity: 0, y: 6 }} animate={{ opacity: 1, y: 0 }} className="mt-4">
-            <p className="mb-2 text-xs font-bold uppercase tracking-wider text-ink/60">
-              Start time · {dayLabel(new Date(Date.UTC(selectedDay.y, selectedDay.m - 1, selectedDay.d, 12)), 'UTC', { weekday: 'long', month: 'short', day: 'numeric' })}
-            </p>
-            <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 lg:grid-cols-5" role="listbox" aria-label="Pick a start time">
-              {daySlots.map((s) => {
-                const on = value?.start.getTime() === s.start.getTime()
-                return (
-                  <button
-                    key={s.minutes}
-                    type="button"
-                    role="option"
-                    aria-selected={on}
-                    disabled={s.busy}
-                    data-slot={s.start.toISOString()}
-                    data-busy={s.busy || undefined}
-                    onClick={() => onChange({ start: s.start, end: s.end })}
-                    className={`min-w-0 rounded-xl border-2 px-1 py-1.5 text-center leading-tight transition ${
-                      on
-                        ? 'border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D]'
-                        : s.busy
-                          ? 'cursor-not-allowed border-dashed border-ink/20 bg-ink/5 text-ink/30'
-                          : 'border-ink/20 bg-blush hover:border-ink hover:bg-baby'
-                    }`}
-                  >
-                    <span className={`block text-sm font-bold ${s.busy ? 'line-through' : ''}`}>{timeLabel(s.start, YIYI_TZ)}</span>
-                    {s.busy ? (
-                      <span className="block text-[0.65rem] font-semibold uppercase">busy</span>
-                    ) : differs ? (
-                      <span className={`block text-[0.65rem] ${on ? 'text-cream/85' : 'text-ink/50'}`}>you: {timeLabel(s.start, visitorTz)}</span>
-                    ) : null}
-                  </button>
-                )
-              })}
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
 
       {value && (
         <motion.div initial={{ opacity: 0, scale: 0.97 }} animate={{ opacity: 1, scale: 1 }} className="mt-4 flex items-start justify-between gap-3 rounded-2xl border-2 border-ink bg-baby p-3" data-testid="slot-summary">
