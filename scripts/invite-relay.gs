@@ -2,6 +2,7 @@
  * Yiyi's Universe ♡ — invite + calendar relay (Google Apps Script, free).
  * Runs as you (yiyitan076@gmail.com). It:
  *   • GET  ?action=availability&from=ISO&to=ISO → busy blocks only (start/end, never titles) from CALENDAR_IDS
+ *     and, optionally, public iCloud calendar links saved in the ICLOUD_ICS_URLS script property
  *   • POST invite JSON → emails you; with slots [{start,end}] it also puts a "♡ Request" hold on your
  *     calendar for every proposed time
  *   • GET  ?action=accept&option=N|decline&id=…&token=… → a page to confirm; accepting one time sends the
@@ -14,6 +15,8 @@
  *        Execute as: Me      Who has access: Anyone
  *   3. Authorize (Gmail + Calendar + external requests), copy the Web app URL (ends in /exec)
  *   4. Paste it into links.inviteScriptUrl in src/data/content.ts and push.
+ *   5. Optional, iCloud: Project Settings → Script properties → Add script property
+ *        ICLOUD_ICS_URLS = your public iCloud calendar link(s), comma or new-line separated.
  * After editing this file: Deploy → Manage deployments → ✏️ → Version: New version → Deploy
  * (the /exec URL stays the same). New permissions prompt for re-authorization.
  */
@@ -23,10 +26,25 @@ var CONFIG = {
   CALENDAR_IDS: ['primary', 'ee.official67@gmail.com'],
   TIME_ZONE: 'America/Toronto',
   /**
-   * Never bookable, in TIME_ZONE. Days: 0 = Sunday … 6 = Saturday. Minutes after midnight.
-   * Keep in sync with WORK_HOURS in src/lib/calendar.ts.
+   * When plans can happen, in TIME_ZONE, by weekday (0 = Sunday … 6 = Saturday), in minutes after midnight.
+   * A plan has to start and end inside its day's window. `work` days are work time until the window opens.
+   * Keep in sync with BOOKABLE_HOURS in src/lib/calendar.ts.
    */
-  WORK_HOURS: { DAYS: [1, 2, 3, 4, 5], START_MIN: 6 * 60, END_MIN: 19 * 60 },
+  BOOKABLE_HOURS: [
+    { startMin: 9 * 60, endMin: 22 * 60 }, // Sun
+    { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Mon
+    { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Tue
+    { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Wed
+    { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Thu
+    { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Fri
+    { startMin: 9 * 60, endMin: 22 * 60 }, // Sat
+  ],
+  /**
+   * Optional iCloud busy times: Project Settings → Script properties → ICLOUD_ICS_URLS = your public
+   * iCloud calendar link(s) (webcal:// is fine), separated by commas or new lines. Never put them in this file.
+   */
+  ICLOUD_PROPERTY: 'ICLOUD_ICS_URLS',
+  ICLOUD_CACHE_SEC: 600,
   /** Longest range one availability query may cover (about one month view). */
   MAX_QUERY_DAYS: 62,
   /** How far ahead plans can be requested. */
@@ -84,21 +102,42 @@ function overlapsAny_(start, end, busy) {
   return busy.some(function (b) { return start < b.end && end > b.start; });
 }
 
-/** Wall-clock time in TIME_ZONE, expressed as if it were UTC ms (so day/minute math is plain arithmetic). */
-function wallMs_(ms) {
-  return Date.parse(Utilities.formatDate(new Date(ms), CONFIG.TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss") + 'Z');
+/** Wall-clock time in `tz` (default TIME_ZONE), expressed as if it were UTC ms (so day/minute math is plain arithmetic). */
+function wallMs_(ms, tz) {
+  if (tz === 'UTC') return ms;
+  return Date.parse(Utilities.formatDate(new Date(ms), tz || CONFIG.TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss") + 'Z');
 }
 
-/** True if [start, end) touches the work-hours window on any day it spans. */
-function overlapsWorkHours_(start, end) {
-  var w = CONFIG.WORK_HOURS;
+/** Inverse of wallMs_: a wall-clock time in `tz` → the real instant. */
+function zonedMs_(wall, tz) {
+  if (tz === 'UTC') return wall;
+  var guess = wall - (wallMs_(wall, tz) - wall);
+  return wall - (wallMs_(guess, tz) - guess);
+}
+
+/**
+ * null if [start, end) starts and ends inside the bookable window of the Toronto day it starts on,
+ * otherwise 'work' (starts during weekday work time) or 'hours' (outside the window some other way).
+ */
+function bookingProblem_(start, end) {
   var a = wallMs_(start);
   var b = wallMs_(end);
-  for (var day = Math.floor(a / DAY_MS) * DAY_MS; day < b; day += DAY_MS) {
-    if (w.DAYS.indexOf(new Date(day).getUTCDay()) < 0) continue;
-    if (a < day + w.END_MIN * MIN_MS && b > day + w.START_MIN * MIN_MS) return true;
-  }
-  return false;
+  var day = Math.floor(a / DAY_MS) * DAY_MS;
+  var w = CONFIG.BOOKABLE_HOURS[new Date(day).getUTCDay()];
+  if (a < day + w.startMin * MIN_MS) return w.work ? 'work' : 'hours';
+  return b <= day + w.endMin * MIN_MS ? null : 'hours';
+}
+
+/** "7 PM", "9:30 AM". */
+function clockLabel_(min) {
+  var h = Math.floor(min / 60) % 24;
+  var m = min % 60;
+  return (h % 12 || 12) + (m ? ':' + (m < 10 ? '0' : '') + m : '') + (h < 12 ? ' AM' : ' PM');
+}
+
+function hoursSummary_() {
+  var label = function (w) { return clockLabel_(w.startMin) + '–' + clockLabel_(w.endMin); };
+  return 'weekdays ' + label(CONFIG.BOOKABLE_HOURS[1]) + ' or weekends ' + label(CONFIG.BOOKABLE_HOURS[6]) + ' (Toronto)';
 }
 
 /** Clamps an availability window to start no earlier than now, end within MAX_AHEAD_DAYS, span ≤ MAX_QUERY_DAYS. */
@@ -149,7 +188,9 @@ function validateRequest_(d, nowMs) {
     if (end - start > CONFIG.MAX_DURATION_MIN * MIN_MS) return bad('Plans can be up to 12 hours.');
     if (start < nowMs + CONFIG.MIN_LEAD_MIN * MIN_MS) return bad('Pick a time a little further in the future.');
     if (start > nowMs + CONFIG.MAX_AHEAD_DAYS * DAY_MS) return bad('That is a bit too far ahead. Pick something in the next two years.');
-    if (overlapsWorkHours_(start, end)) return { ok: false, code: 'work', message: 'Weekdays 6 AM–7 PM (Toronto) are work hours. Pick a weekday evening or a weekend?' };
+    var problem = bookingProblem_(start, end);
+    if (problem === 'work') return { ok: false, code: 'work', message: 'Weekdays until ' + clockLabel_(CONFIG.BOOKABLE_HOURS[1].startMin) + ' (Toronto) are work hours. Plans fit ' + hoursSummary_() + '.' };
+    if (problem) return { ok: false, code: 'hours', message: 'Plans fit ' + hoursSummary_() + '. Pick another time?' };
     slots.push({ start: start, end: end });
   }
   slots.sort(function (a, b) { return a.start - b.start; });
@@ -282,7 +323,7 @@ function respondToRequest(action, id, token, option) {
 
 function availability_(fromIso, toIso) {
   var win = clampWindow_(fromIso, toIso, Date.now());
-  if (!win) return { success: true, busy: [], calendarsMissing: [] };
+  if (!win) return { success: true, busy: [], calendarsMissing: [], icloudErrors: 0 };
   var cache = CacheService.getScriptCache();
   var key = 'av:' + (cache.get('gen') || '0') + ':' + win.from + ':' + win.to;
   var hit = cache.get(key);
@@ -294,18 +335,25 @@ function availability_(fromIso, toIso) {
     timeZone: CONFIG.TIME_ZONE,
     busy: res.busy.map(function (b) { return { start: new Date(b.start).toISOString(), end: new Date(b.end).toISOString() }; }),
     calendarsMissing: res.missing,
+    icloudErrors: res.icloudErrors,
   };
   try { cache.put(key, JSON.stringify(out), 60); } catch (err) { /* too big to cache */ }
   return out;
 }
 
-/** Merged busy blocks across CALENDAR_IDS. Free/busy API first (works with "See only free/busy" sharing). */
+/**
+ * Merged busy blocks across CALENDAR_IDS plus any iCloud links in ICLOUD_ICS_URLS.
+ * Free/busy API first (works with "See only free/busy" sharing).
+ */
 function getBusy_(from, to) {
+  var google;
   try {
-    return freeBusyApi_(from, to);
+    google = freeBusyApi_(from, to);
   } catch (err) {
-    return calendarAppBusy_(from, to);
+    google = calendarAppBusy_(from, to);
   }
+  var icloud = icloudBusy_(from, to);
+  return { busy: mergeIntervals_(google.busy.concat(icloud.busy)), missing: google.missing, icloudErrors: icloud.errors };
 }
 
 function freeBusyApi_(from, to) {
@@ -346,6 +394,426 @@ function calendarAppBusy_(from, to) {
     });
   });
   return { busy: mergeIntervals_(busy), missing: missing };
+}
+
+/* ───────────────────────── iCloud (public calendar links, RFC 5545) ───────────────────────── */
+
+var ICS_KEEP_RE = /^(BEGIN|END|DTSTART|DTEND|DURATION|RRULE|RDATE|EXDATE|UID|RECURRENCE-ID|STATUS|TRANSP)[;:]/i;
+var ICS_WEEKDAYS = { SU: 0, MO: 1, TU: 2, WE: 3, TH: 4, FR: 5, SA: 6 };
+var ICS_ZONE_RE = /(?:^|\/)((?:Africa|America|Antarctica|Arctic|Asia|Atlantic|Australia|Europe|Indian|Pacific|Etc)\/[A-Za-z0-9_+\-]+(?:\/[A-Za-z0-9_+\-]+)?)$/;
+/** TZIDs that aren't IANA names (Windows/Outlook names, old aliases), lowercased. */
+var ICS_ZONE_ALIASES = {
+  'utc': 'UTC', 'gmt': 'UTC', 'z': 'UTC', 'etc/utc': 'UTC', 'etc/gmt': 'UTC', 'coordinated universal time': 'UTC',
+  'eastern standard time': 'America/New_York', 'us/eastern': 'America/New_York', 'canada/eastern': 'America/Toronto',
+  'central standard time': 'America/Chicago', 'us/central': 'America/Chicago',
+  'mountain standard time': 'America/Denver', 'us/mountain': 'America/Denver', 'us mountain standard time': 'America/Phoenix',
+  'pacific standard time': 'America/Los_Angeles', 'us/pacific': 'America/Los_Angeles', 'canada/pacific': 'America/Vancouver',
+  'atlantic standard time': 'America/Halifax', 'newfoundland standard time': 'America/St_Johns',
+  'alaskan standard time': 'America/Anchorage', 'hawaiian standard time': 'Pacific/Honolulu',
+  'gmt standard time': 'Europe/London', 'w. europe standard time': 'Europe/Berlin', 'romance standard time': 'Europe/Paris',
+  'central europe standard time': 'Europe/Budapest', 'central european standard time': 'Europe/Warsaw',
+  'china standard time': 'Asia/Shanghai', 'taipei standard time': 'Asia/Taipei', 'tokyo standard time': 'Asia/Tokyo',
+  'korea standard time': 'Asia/Seoul', 'india standard time': 'Asia/Kolkata', 'singapore standard time': 'Asia/Singapore',
+  'aus eastern standard time': 'Australia/Sydney',
+};
+var ICS_MAX_URLS = 10;
+var ICS_MAX_PERIODS = 50000;
+var ICS_CHUNK_CHARS = 25000;
+var ICS_MAX_CHUNKS = 40;
+
+/** TZID parameter → a time zone Utilities.formatDate understands. Unknown or missing → TIME_ZONE. */
+function icsZone_(tzid) {
+  var id = String(tzid || '').replace(/^"|"$/g, '').trim();
+  if (!id) return CONFIG.TIME_ZONE;
+  var alias = ICS_ZONE_ALIASES[id.toLowerCase()];
+  if (alias) return alias;
+  var m = ICS_ZONE_RE.exec(id);
+  return m ? m[1] : CONFIG.TIME_ZONE;
+}
+
+/** Unfolds lines and keeps only what busy times need (no titles, notes, locations or attendees). */
+function icsMinify_(text) {
+  return String(text).replace(/\r\n?/g, '\n').replace(/\n[ \t]/g, '').split('\n')
+    .filter(function (line) { return ICS_KEEP_RE.test(line); })
+    .join('\n');
+}
+
+/** "DTSTART;TZID=America/Toronto:20261107T090000" → { name, params, value }. */
+function icsLine_(line) {
+  var quoted = false;
+  var cut = -1;
+  for (var i = 0; i < line.length; i++) {
+    var c = line.charAt(i);
+    if (c === '"') quoted = !quoted;
+    else if (c === ':' && !quoted) { cut = i; break; }
+  }
+  if (cut < 0) return null;
+  var head = line.slice(0, cut).match(/("[^"]*"|[^;])+/g) || [''];
+  var params = {};
+  head.slice(1).forEach(function (kv) {
+    var eq = kv.indexOf('=');
+    if (eq > 0) params[kv.slice(0, eq).trim().toUpperCase()] = kv.slice(eq + 1).replace(/^"|"$/g, '');
+  });
+  return { name: head[0].trim().toUpperCase(), params: params, value: line.slice(cut + 1).trim() };
+}
+
+/** Property lists of every VEVENT (properties of nested VALARMs etc. are ignored). */
+function icsEvents_(text) {
+  var events = [];
+  var stack = [];
+  var cur = null;
+  icsMinify_(text).split('\n').forEach(function (raw) {
+    var p = raw && icsLine_(raw);
+    if (!p) return;
+    if (p.name === 'BEGIN') {
+      stack.push(p.value.toUpperCase());
+      if (p.value.toUpperCase() === 'VEVENT') cur = {};
+    } else if (p.name === 'END') {
+      if (stack.pop() === 'VEVENT' && cur) { events.push(cur); cur = null; }
+    } else if (cur && stack[stack.length - 1] === 'VEVENT') {
+      (cur[p.name] = cur[p.name] || []).push(p);
+    }
+  });
+  return events;
+}
+
+/**
+ * A DATE or DATE-TIME value → { wall, tz, date }: `wall` is the wall clock as if it were UTC ms.
+ * 'Z' → UTC, TZID → that zone, floating → TIME_ZONE, all-day (VALUE=DATE) → midnight in TIME_ZONE.
+ */
+function icsTime_(value, params) {
+  var m = /^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/.exec(String(value || '').trim());
+  if (!m) return null;
+  var date = !m[4] || String((params && params.VALUE) || '').toUpperCase() === 'DATE';
+  var wall = date ? Date.UTC(+m[1], +m[2] - 1, +m[3]) : Date.UTC(+m[1], +m[2] - 1, +m[3], +m[4], +m[5], +(m[6] || 0));
+  var tz = date ? CONFIG.TIME_ZONE : m[7] ? 'UTC' : icsZone_(params && params.TZID);
+  return { wall: wall, tz: tz, date: date };
+}
+
+/** Every value of EXDATE/RDATE lines (comma lists, PERIOD values use their start). */
+function icsTimes_(props) {
+  var out = [];
+  (props || []).forEach(function (p) {
+    p.value.split(',').forEach(function (v) {
+      var t = icsTime_(v.split('/')[0], p.params);
+      if (t) out.push(t);
+    });
+  });
+  return out;
+}
+
+/** "P1DT2H" → { nominal: days/weeks (wall clock), exact: hours/minutes/seconds }. Negative → null. */
+function icsDuration_(s) {
+  var m = /^\+?P(?:(\d+)W)?(?:(\d+)D)?(?:T(?:(\d+)H)?(?:(\d+)M)?(?:(\d+)S)?)?$/.exec(String(s || '').trim().toUpperCase());
+  if (!m) return null;
+  return {
+    nominal: ((+m[1] || 0) * 7 + (+m[2] || 0)) * DAY_MS,
+    exact: ((+m[3] || 0) * 3600 + (+m[4] || 0) * 60 + (+m[5] || 0)) * 1000,
+  };
+}
+
+/** RRULE value → rule, or null if it isn't one we can expand (then only DTSTART counts). */
+function icsRule_(s) {
+  var r = { freq: '', interval: 1, count: 0, until: null, byday: [], bymonthday: [], bymonth: [], bysetpos: [], wkst: 1 };
+  var ints = function (v) { return v.split(',').map(Number).filter(function (n) { return n && isFinite(n); }); };
+  String(s || '').split(';').forEach(function (kv) {
+    var eq = kv.indexOf('=');
+    if (eq < 0) return;
+    var k = kv.slice(0, eq).trim().toUpperCase();
+    var v = kv.slice(eq + 1).trim().toUpperCase();
+    if (k === 'FREQ') r.freq = v;
+    else if (k === 'INTERVAL') r.interval = Math.max(1, Math.floor(Number(v)) || 1);
+    else if (k === 'COUNT') r.count = Math.max(0, Math.floor(Number(v)) || 0);
+    else if (k === 'UNTIL') r.until = icsTime_(v, {});
+    else if (k === 'BYMONTHDAY') r.bymonthday = ints(v);
+    else if (k === 'BYMONTH') r.bymonth = ints(v);
+    else if (k === 'BYSETPOS') r.bysetpos = ints(v);
+    else if (k === 'WKST' && v in ICS_WEEKDAYS) r.wkst = ICS_WEEKDAYS[v];
+    else if (k === 'BYDAY') {
+      r.byday = v.split(',').map(function (x) {
+        var m = /^([+-]?\d{1,2})?(SU|MO|TU|WE|TH|FR|SA)$/.exec(x.trim());
+        return m ? { n: m[1] ? Number(m[1]) : 0, wd: ICS_WEEKDAYS[m[2]] } : null;
+      }).filter(Boolean);
+    }
+  });
+  return /^(DAILY|WEEKLY|MONTHLY|YEARLY)$/.test(r.freq) ? r : null;
+}
+
+function icsEvent_(props) {
+  var one = function (name) { return props[name] ? props[name][0] : null; };
+  var ds = one('DTSTART');
+  var start = ds && icsTime_(ds.value, ds.params);
+  if (!start) return null;
+  var rid = one('RECURRENCE-ID');
+  var ev = {
+    uid: one('UID') ? one('UID').value : '',
+    start: start,
+    skip: /^TRANSPARENT$/i.test(one('TRANSP') ? one('TRANSP').value : '') || /^CANCELLED$/i.test(one('STATUS') ? one('STATUS').value : ''),
+    nominal: 0,
+    exact: 0,
+    recurrenceId: rid ? icsTime_(rid.value, rid.params) : null,
+    rule: one('RRULE') && !rid ? icsRule_(one('RRULE').value) : null,
+    exdates: icsTimes_(props.EXDATE),
+    rdates: icsTimes_(props.RDATE),
+  };
+  var de = one('DTEND');
+  var end = de && icsTime_(de.value, de.params);
+  var du = one('DURATION') && icsDuration_(one('DURATION').value);
+  if (end && (start.date || end.date || end.tz === start.tz)) ev.nominal = end.wall - start.wall;
+  else if (end) ev.exact = zonedMs_(end.wall, end.tz) - zonedMs_(start.wall, start.tz);
+  else if (du) { ev.nominal = du.nominal; ev.exact = du.exact; }
+  else if (start.date) ev.nominal = DAY_MS;
+  return ev;
+}
+
+function icsMonthDayMatch_(d, len, list) {
+  return list.some(function (md) { return md > 0 ? md === d : len + md + 1 === d; });
+}
+
+/** Days of month `m` (0-based) a MONTHLY rule (or YEARLY with BYMONTH) produces, as UTC-midnight walls. */
+function icsMonthDays_(y, m, r, md0) {
+  var len = new Date(Date.UTC(y, m + 1, 0)).getUTCDate();
+  var list;
+  if (r.byday.length) {
+    list = [];
+    r.byday.forEach(function (b) {
+      var all = [];
+      for (var d = 1; d <= len; d++) if (new Date(Date.UTC(y, m, d)).getUTCDay() === b.wd) all.push(d);
+      if (!b.n) list = list.concat(all);
+      else if (all[b.n > 0 ? b.n - 1 : all.length + b.n]) list.push(all[b.n > 0 ? b.n - 1 : all.length + b.n]);
+    });
+    if (r.bymonthday.length) list = list.filter(function (d) { return icsMonthDayMatch_(d, len, r.bymonthday); });
+  } else if (r.bymonthday.length) {
+    list = r.bymonthday.map(function (md) { return md > 0 ? md : len + md + 1; });
+  } else {
+    list = [md0];
+  }
+  return list.filter(function (d) { return d >= 1 && d <= len; }).map(function (d) { return Date.UTC(y, m, d); });
+}
+
+function icsYearDays_(y, r, m0, md0) {
+  var concat = function (months) {
+    return months.reduce(function (all, mo) { return all.concat(icsMonthDays_(y, mo, r, md0)); }, []);
+  };
+  if (r.bymonth.length) return concat(r.bymonth.map(function (mo) { return mo - 1; }));
+  if (r.bymonthday.length && !r.byday.length) return concat([0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11]);
+  if (r.byday.length) {
+    var out = [];
+    r.byday.forEach(function (b) {
+      var all = [];
+      for (var t = Date.UTC(y, 0, 1); t < Date.UTC(y + 1, 0, 1); t += DAY_MS) if (new Date(t).getUTCDay() === b.wd) all.push(t);
+      if (!b.n) out = out.concat(all);
+      else if (all[b.n > 0 ? b.n - 1 : all.length + b.n]) out.push(all[b.n > 0 ? b.n - 1 : all.length + b.n]);
+    });
+    return out;
+  }
+  return icsMonthDays_(y, m0, r, md0);
+}
+
+/** Period k of a rule: its first day and the (sorted) days it produces. */
+function icsPeriod_(r, k, d0, ws0) {
+  var first = new Date(d0);
+  var y0 = first.getUTCFullYear();
+  var m0 = first.getUTCMonth();
+  var md0 = first.getUTCDate();
+  var start;
+  var days;
+  if (r.freq === 'DAILY') {
+    start = d0 + k * r.interval * DAY_MS;
+    days = [start];
+  } else if (r.freq === 'WEEKLY') {
+    start = ws0 + k * r.interval * 7 * DAY_MS;
+    var wds = r.byday.length ? r.byday.map(function (b) { return b.wd; }) : [first.getUTCDay()];
+    days = wds.map(function (wd) { return start + ((wd - r.wkst + 7) % 7) * DAY_MS; });
+  } else if (r.freq === 'MONTHLY') {
+    var mi = m0 + k * r.interval;
+    var y = y0 + Math.floor(mi / 12);
+    start = Date.UTC(y, mi % 12, 1);
+    days = icsMonthDays_(y, mi % 12, r, md0);
+  } else {
+    start = Date.UTC(y0 + k * r.interval, 0, 1);
+    days = icsYearDays_(y0 + k * r.interval, r, m0, md0);
+  }
+  days = days.filter(function (t) {
+    var d = new Date(t);
+    if (r.bymonth.length && r.bymonth.indexOf(d.getUTCMonth() + 1) < 0) return false;
+    if (r.freq === 'DAILY' && r.byday.length && !r.byday.some(function (b) { return b.wd === d.getUTCDay(); })) return false;
+    if ((r.freq === 'DAILY' || r.freq === 'WEEKLY') && r.bymonthday.length) {
+      return icsMonthDayMatch_(d.getUTCDate(), new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth() + 1, 0)).getUTCDate(), r.bymonthday);
+    }
+    return true;
+  }).sort(function (a, b) { return a - b; }).filter(function (t, i, all) { return i === 0 || t !== all[i - 1]; });
+  if (r.bysetpos.length) {
+    days = r.bysetpos.map(function (p) { return days[p > 0 ? p - 1 : days.length + p]; })
+      .filter(function (t) { return t != null; })
+      .sort(function (a, b) { return a - b; });
+  }
+  return { start: start, days: days };
+}
+
+/** Last allowed start (wall clock of the event's zone) for an UNTIL value. */
+function icsUntil_(u, start) {
+  if (!u) return Infinity;
+  if (u.date) return u.wall + DAY_MS - 1;
+  return u.tz === 'UTC' ? wallMs_(u.wall, start.tz) : u.wall;
+}
+
+/** Start walls of every instance of `ev` (from its RRULE, or just DTSTART) that fall in [lo, hi]. */
+function icsExpand_(ev, lo, hi) {
+  var r = ev.rule;
+  var s0 = ev.start.wall;
+  var out = [];
+  var keep = function (w) { if (w >= lo && w <= hi) out.push(w); };
+  if (!r) { keep(s0); return out; }
+  var limit = icsUntil_(r.until, ev.start);
+  var tod = s0 - Math.floor(s0 / DAY_MS) * DAY_MS;
+  var d0 = s0 - tod;
+  var ws0 = d0 - ((new Date(d0).getUTCDay() - r.wkst + 7) % 7) * DAY_MS;
+  var k = 0;
+  if (!r.count) {
+    // Without COUNT nothing before the range matters, so jump straight to it.
+    var a = new Date(d0);
+    var b = new Date(lo);
+    var units = r.freq === 'DAILY' ? Math.floor((lo - d0) / DAY_MS)
+      : r.freq === 'WEEKLY' ? Math.floor((lo - ws0) / (7 * DAY_MS))
+      : r.freq === 'MONTHLY' ? (b.getUTCFullYear() - a.getUTCFullYear()) * 12 + b.getUTCMonth() - a.getUTCMonth()
+      : b.getUTCFullYear() - a.getUTCFullYear();
+    k = Math.max(0, Math.floor(units / r.interval) - 1);
+  }
+  var n = 1; // DTSTART is always the first instance
+  keep(s0);
+  for (var guard = 0; guard < ICS_MAX_PERIODS; guard++, k++) {
+    var p = icsPeriod_(r, k, d0, ws0);
+    if (p.start + tod > hi || p.start + tod > limit) break;
+    for (var i = 0; i < p.days.length; i++) {
+      var w = p.days[i] + tod;
+      if (w <= s0) continue;
+      if (w > limit) return out;
+      if (r.count && ++n > r.count) return out;
+      keep(w);
+    }
+  }
+  return out;
+}
+
+/** A DATE/DATE-TIME as a wall clock in the zone of `start`. */
+function icsInZone_(t, start) {
+  if (t.date || start.date || t.tz === start.tz) return t.wall;
+  return wallMs_(zonedMs_(t.wall, t.tz), start.tz);
+}
+
+/**
+ * Busy blocks (epoch ms, merged) from an .ics feed that overlap [from, to). Skips TRANSPARENT and CANCELLED
+ * events, honours RRULE/RDATE/EXDATE and RECURRENCE-ID overrides. Only start/end ever leave this function.
+ */
+function icsBusy_(text, from, to) {
+  var memo = {};
+  var wallAt = function (ms, tz) {
+    var key = tz + '@' + ms;
+    if (!(key in memo)) memo[key] = wallMs_(ms, tz);
+    return memo[key];
+  };
+  var events = icsEvents_(text).map(icsEvent_).filter(Boolean);
+  var moved = {};
+  events.forEach(function (ev) {
+    if (ev.recurrenceId && ev.uid) (moved[ev.uid] = moved[ev.uid] || []).push(ev.recurrenceId);
+  });
+  var busy = [];
+  events.forEach(function (ev) {
+    var span = ev.nominal + ev.exact;
+    if (ev.skip || span <= 0) return;
+    var tz = ev.start.tz;
+    var lo = wallAt(from, tz) - span - DAY_MS;
+    var hi = wallAt(to, tz) + DAY_MS;
+    var starts = icsExpand_(ev, lo, hi);
+    if (!ev.recurrenceId) {
+      ev.rdates.forEach(function (t) {
+        var w = icsInZone_(t, ev.start);
+        if (w >= lo && w <= hi) starts.push(w);
+      });
+    }
+    if (!starts.length) return;
+    var gone = ev.recurrenceId ? [] : ev.exdates.concat(moved[ev.uid] || []).map(function (t) {
+      return { date: t.date, key: t.date ? t.wall : zonedMs_(t.wall, t.tz) };
+    });
+    starts.forEach(function (w) {
+      var start = zonedMs_(w, tz);
+      var day = Math.floor(w / DAY_MS) * DAY_MS;
+      if (gone.some(function (g) { return g.date ? g.key === day : g.key === start; })) return;
+      var end = zonedMs_(w + ev.nominal, tz) + ev.exact;
+      if (start < to && end > from) busy.push({ start: start, end: end });
+    });
+  });
+  return mergeIntervals_(busy);
+}
+
+/** ICLOUD_ICS_URLS → https URLs (webcal:// converted), plus how many entries weren't links. */
+function icloudUrls_() {
+  var raw = '';
+  try { raw = PropertiesService.getScriptProperties().getProperty(CONFIG.ICLOUD_PROPERTY) || ''; } catch (err) { raw = ''; }
+  var urls = [];
+  var bad = 0;
+  String(raw).split(/[\s,]+/).forEach(function (u) {
+    if (!u) return;
+    var url = u.replace(/^webcals?:\/\//i, 'https://');
+    if (/^https?:\/\/[^\s/]+\/\S*$/i.test(url) && urls.length < ICS_MAX_URLS) urls.push(url);
+    else bad++;
+  });
+  return { urls: urls, bad: bad };
+}
+
+function hash_(s) {
+  var a = 5381;
+  var b = 52711;
+  for (var i = 0; i < s.length; i++) {
+    var c = s.charCodeAt(i);
+    a = ((a * 33) ^ c) | 0;
+    b = ((b * 31) ^ c) | 0;
+  }
+  return (a >>> 0).toString(36) + (b >>> 0).toString(36);
+}
+
+/** The minified feed, cached for ICLOUD_CACHE_SEC in chunks (CacheService values are capped at 100 KB). */
+function icloudFeed_(url) {
+  var cache = CacheService.getScriptCache();
+  var key = 'ics:' + hash_(url);
+  var n = Number(cache.get(key) || 0);
+  if (n > 0) {
+    var parts = [];
+    for (var i = 0; i < n && parts; i++) {
+      var part = cache.get(key + ':' + i);
+      if (part == null) parts = null;
+      else parts.push(part);
+    }
+    if (parts) return parts.join('');
+  }
+  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'text/calendar' } });
+  var text = res.getResponseCode() === 200 ? res.getContentText() : '';
+  if (text.indexOf('BEGIN:VCALENDAR') < 0) throw new Error('iCloud feed ' + res.getResponseCode());
+  var min = icsMinify_(text);
+  var chunks = Math.ceil(min.length / ICS_CHUNK_CHARS);
+  if (chunks <= ICS_MAX_CHUNKS) {
+    try {
+      for (var j = 0; j < chunks; j++) cache.put(key + ':' + j, min.slice(j * ICS_CHUNK_CHARS, (j + 1) * ICS_CHUNK_CHARS), CONFIG.ICLOUD_CACHE_SEC);
+      cache.put(key, String(chunks), CONFIG.ICLOUD_CACHE_SEC);
+    } catch (err) { /* caching is an optimisation */ }
+  }
+  return min;
+}
+
+/** Busy blocks from every iCloud link. A link that fails is skipped and counted in `errors`. */
+function icloudBusy_(from, to) {
+  var list = icloudUrls_();
+  var busy = [];
+  var errors = list.bad;
+  list.urls.forEach(function (url) {
+    try {
+      busy = busy.concat(icsBusy_(icloudFeed_(url), from, to));
+    } catch (err) {
+      errors++;
+    }
+  });
+  return { busy: busy, errors: errors };
 }
 
 function ownerCalendar_() {

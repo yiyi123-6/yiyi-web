@@ -3,10 +3,10 @@ import { AnimatePresence, motion } from 'motion/react'
 import { BriefcaseBusiness, CalendarHeart, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Loader2, Pencil, Plus, X } from 'lucide-react'
 import { site } from '../data/content'
 import {
-  DURATIONS_MIN, MAX_AHEAD_DAYS, MAX_DURATION_MIN, MAX_OPTIONS, WORK_HOURS_LABEL, YIYI_TZ,
-  addMonths, buildSlots, compareMonths, dayLabel, describeSlot, durationLabel, fitsOnWeekdays, latestStartMin, localTz,
-  minutesOfDay, monthDays, monthKey, monthOf, monthRange, overlaps, overlapsWorkHours, sameClock, timeLabel,
-  type Busy, type Month, type Slot, type SlotOption,
+  BOOKABLE_HOURS, DURATIONS_MIN, MAX_AHEAD_DAYS, MAX_DURATION_MIN, MAX_OPTIONS, WEEKDAY_HOURS, WEEKEND_HOURS, YIYI_TZ,
+  addMonths, buildSlots, clockLabel, compareMonths, dayKeyOf, dayLabel, describeSlot, durationLabel, fitsOnWeekdays, hoursOn,
+  isBookable, latestStartMin, localTz, minutesOfDay, monthDays, monthKey, monthOf, monthRange, overlaps, sameClock, timeLabel,
+  windowLabel, type Busy, type Month, type Slot, type SlotOption,
 } from '../lib/calendar'
 import { canSendDirectly, fetchAvailability } from '../lib/invite'
 
@@ -77,12 +77,13 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
   const isPicked = (s: Slot) => value.some((v) => sameStart(v, s))
   const clashes = (s: Slot) => value.some((v) => !sameStart(v, s) && overlaps(s.start.getTime(), s.end.getTime(), [{ start: v.start.getTime(), end: v.end.getTime() }]))
   const full = value.length >= MAX_OPTIONS
+  const todayKey = useMemo(() => dayKeyOf(now), [now])
   const dayStatus = (key: string, weekday: number) => {
     const slots = slotsByDay.get(key) ?? []
-    if (!slots.length) return 'past' as const
-    if (slots.every((s) => s.work)) return weekday > 0 && weekday < 6 ? ('work' as const) : ('full' as const)
+    const w = BOOKABLE_HOURS[weekday]
+    if (!slots.length) return w.work && key >= todayKey && latestStartMin(duration, w) < w.startMin ? ('work' as const) : ('past' as const)
     if (slots.some((s) => isPicked(s))) return 'picked' as const
-    return slots.some((s) => !s.work && !s.busy && !clashes(s)) ? ('free' as const) : ('full' as const)
+    return slots.some((s) => !s.busy && !clashes(s)) ? ('free' as const) : ('full' as const)
   }
 
   const durations = useMemo(() => [...new Set([...DURATIONS_MIN, duration])].sort((a, b) => a - b), [duration])
@@ -94,8 +95,8 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
     const kept: Slot[] = []
     for (const v of sortSlots(value)) {
       const s = { start: v.start, end: new Date(v.start.getTime() + min * 60e3) }
-      const ok = minutesOfDay(s.start) <= latestStartMin(min)
-        && !overlapsWorkHours(s.start.getTime(), s.end.getTime())
+      const ok = minutesOfDay(s.start) <= latestStartMin(min, hoursOn(s.start))
+        && isBookable(s.start.getTime(), s.end.getTime())
         && !overlaps(s.start.getTime(), s.end.getTime(), knownBusy)
         && !kept.some((k) => s.start.getTime() < k.end.getTime())
       if (ok) kept.push(s)
@@ -210,11 +211,11 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
       </div>
       {fitsOnWeekdays(duration) ? (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-ink/60" data-testid="work-note">
-          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> {WORK_HOURS_LABEL} (Toronto) is work time, so weekdays open at 7 PM. Weekends are wide open ♡
+          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> Weekdays are work time until {clockLabel(WEEKDAY_HOURS.startMin)} (Toronto), so weekday plans fit {windowLabel(WEEKDAY_HOURS)}. Weekends are open {windowLabel(WEEKEND_HOURS)} ♡
         </p>
       ) : (
         <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-baby px-3 py-2 text-sm font-semibold" data-testid="work-note">
-          <BriefcaseBusiness size={16} className="mt-0.5 shrink-0 text-berry" /> Weekdays are work days for {site.name}, so big adventures live on weekends ♡
+          <BriefcaseBusiness size={16} className="mt-0.5 shrink-0 text-berry" /> Weekdays are work days for {site.name}, so big adventures live on weekends ({windowLabel(WEEKEND_HOURS)}) ♡
         </p>
       )}
 
@@ -277,16 +278,15 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
                   Start time · {dayLabel(noon(selectedDay.y, selectedDay.m, selectedDay.d), 'UTC', { weekday: 'long', month: 'short', day: 'numeric' })}
                 </p>
                 <div className="grid grid-cols-3 gap-1.5 sm:grid-cols-4 md:grid-cols-3 xl:grid-cols-4" role="listbox" aria-label="Pick a start time" aria-multiselectable>
-                  {groupWork(daySlots).map((g) =>
-                    g.kind === 'work' ? (
-                      <div key={`work-${g.slots[0].minutes}`} data-work-block className="col-span-full flex items-center gap-2 rounded-xl border-2 border-dashed border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold text-ink/45">
-                        <BriefcaseBusiness size={14} className="shrink-0" />
-                        {timeLabel(g.slots[0].start, YIYI_TZ)}{g.slots.length > 1 && <> – {timeLabel(g.slots.at(-1)!.start, YIYI_TZ)}</>} · work hours
-                      </div>
-                    ) : (
-                      <SlotButton key={g.slot.minutes} s={g.slot} picked={isPicked(g.slot)} clash={clashes(g.slot)} full={full} differs={differs} visitorTz={visitorTz} onClick={() => toggle(g.slot)} />
-                    ),
+                  {BOOKABLE_HOURS[selectedDay.weekday].work && (
+                    <div data-work-block className="col-span-full flex items-center gap-2 rounded-xl border-2 border-dashed border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold text-ink/45">
+                      <BriefcaseBusiness size={14} className="shrink-0" />
+                      Until {clockLabel(BOOKABLE_HOURS[selectedDay.weekday].startMin)} · work hours
+                    </div>
                   )}
+                  {daySlots.map((s) => (
+                    <SlotButton key={s.minutes} s={s} picked={isPicked(s)} clash={clashes(s)} full={full} differs={differs} visitorTz={visitorTz} onClick={() => toggle(s)} />
+                  ))}
                 </div>
                 {full && <p className="mt-2 text-xs font-semibold text-berry">That's {MAX_OPTIONS} times, the max. Remove one to pick another.</p>}
               </motion.div>
@@ -300,19 +300,6 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
       </div>
     </div>
   )
-}
-
-type Group = { kind: 'work'; slots: SlotOption[] } | { kind: 'slot'; slot: SlotOption }
-
-/** Folds runs of work-hours starts into one "work hours" row so the grid stays readable. */
-function groupWork(slots: SlotOption[]): Group[] {
-  const out: Group[] = []
-  for (const s of slots) {
-    const last = out[out.length - 1]
-    if (s.work && last?.kind === 'work') last.slots.push(s)
-    else out.push(s.work ? { kind: 'work', slots: [s] } : { kind: 'slot', slot: s })
-  }
-  return out
 }
 
 function SlotButton({ s, picked, clash, full, differs, visitorTz, onClick }: {

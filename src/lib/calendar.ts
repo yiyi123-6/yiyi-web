@@ -1,8 +1,6 @@
 /** Time-zone and slot math for the booking picker. Pure: no imports, so it's easy to test. */
 
 export const YIYI_TZ = 'America/Toronto'
-export const DAY_START_MIN = 6 * 60
-export const DAY_END_MIN = 22 * 60
 export const MORNING_ONLY_FROM_MIN = 5 * 60
 export const LATEST_MORNING_START_MIN = 10 * 60
 export const STEP_MIN = 30
@@ -11,12 +9,23 @@ export const MAX_DURATION_MIN = 12 * 60
 /** How far ahead visitors can propose plans (the relay enforces the same cap). */
 export const MAX_AHEAD_DAYS = 730
 export const MAX_OPTIONS = 5
+export type Window = { startMin: number; endMin: number; work?: boolean }
 /**
- * Never bookable, in Yiyi's time. Days: 0 = Sunday … 6 = Saturday. Minutes after midnight.
- * Keep in sync with CONFIG.WORK_HOURS in scripts/invite-relay.gs.
+ * When plans can happen, in Yiyi's time, by weekday (0 = Sunday … 6 = Saturday), in minutes after midnight.
+ * A plan has to start and end inside its day's window. `work` days are work time until the window opens.
+ * Keep in sync with CONFIG.BOOKABLE_HOURS in scripts/invite-relay.gs.
  */
-export const WORK_HOURS = { days: [1, 2, 3, 4, 5], startMin: 6 * 60, endMin: 19 * 60 }
-export const WORK_HOURS_LABEL = 'Mon–Fri 6 AM–7 PM'
+export const BOOKABLE_HOURS: Window[] = [
+  { startMin: 9 * 60, endMin: 22 * 60 }, // Sun
+  { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Mon
+  { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Tue
+  { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Wed
+  { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Thu
+  { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Fri
+  { startMin: 9 * 60, endMin: 22 * 60 }, // Sat
+]
+export const WEEKDAY_HOURS = BOOKABLE_HOURS[1]
+export const WEEKEND_HOURS = BOOKABLE_HOURS[6]
 export const DURATIONS_MIN = [30, 60, 90, 120, 180, 240, 300, 360, 480, 540, 600, 720]
 
 export type Busy = { start: number; end: number }
@@ -91,44 +100,64 @@ export function monthRange({ y, m }: Month, tz = YIYI_TZ) {
 
 const DAY_MS = 86400e3
 
-/** True if [start, end) touches the work-hours window on any day it spans. */
-export function overlapsWorkHours(start: number, end: number, tz = YIYI_TZ) {
+/** The bookable window of the day `date` falls on, in Yiyi's time. */
+export function hoursOn(date: Date, tz = YIYI_TZ) {
+  const p = zonedParts(date, tz)
+  return BOOKABLE_HOURS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]
+}
+
+/** True if [start, end) starts and ends inside the bookable window of the day it starts on. */
+export function isBookable(start: number, end: number, tz = YIYI_TZ) {
   const a = start + tzOffsetMs(new Date(start), tz)
   const b = end + tzOffsetMs(new Date(end), tz)
-  for (let day = Math.floor(a / DAY_MS) * DAY_MS; day < b; day += DAY_MS) {
-    if (!WORK_HOURS.days.includes(new Date(day).getUTCDay())) continue
-    if (a < day + WORK_HOURS.endMin * 60e3 && b > day + WORK_HOURS.startMin * 60e3) return true
-  }
-  return false
+  const day = Math.floor(a / DAY_MS) * DAY_MS
+  const w = BOOKABLE_HOURS[new Date(day).getUTCDay()]
+  return a >= day + w.startMin * 60e3 && b <= day + w.endMin * 60e3
 }
 
-/** Whether a plan this long fits before or after work on a weekday. */
+/** Long plans (5h+) only start in the morning; everything ends when the day's window closes. */
+export function latestStartMin(durationMin: number, w: Window) {
+  const cap = durationMin >= MORNING_ONLY_FROM_MIN ? LATEST_MORNING_START_MIN : w.endMin
+  return Math.min(cap, w.endMin - durationMin)
+}
+
+/** Whether a plan this long fits into a weekday evening. */
 export function fitsOnWeekdays(durationMin: number) {
-  return DAY_START_MIN + durationMin <= WORK_HOURS.startMin || WORK_HOURS.endMin <= latestStartMin(durationMin)
+  return latestStartMin(durationMin, WEEKDAY_HOURS) >= WEEKDAY_HOURS.startMin
 }
 
-/** Long plans (5h+) only start in the morning; everything ends by 22:00 Toronto time. */
-export function latestStartMin(durationMin: number) {
-  const cap = durationMin >= MORNING_ONLY_FROM_MIN ? LATEST_MORNING_START_MIN : DAY_END_MIN
-  return Math.min(cap, DAY_END_MIN - durationMin)
+/** "7 PM", "9:30 AM". */
+export function clockLabel(min: number) {
+  const h = Math.floor(min / 60) % 24
+  const m = min % 60
+  return `${h % 12 || 12}${m ? `:${String(m).padStart(2, '0')}` : ''} ${h < 12 ? 'AM' : 'PM'}`
 }
 
-export type SlotOption = Slot & { minutes: number; past: boolean; busy: boolean; work: boolean }
+export const windowLabel = (w: Window) => `${clockLabel(w.startMin)}–${clockLabel(w.endMin)}`
+
+export type SlotOption = Slot & { minutes: number; past: boolean; busy: boolean }
 
 export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[] = [], tz = YIYI_TZ): SlotOption[] {
   const out: SlotOption[] = []
   const lead = now.getTime() + LEAD_MIN * 60e3
-  for (let min = DAY_START_MIN; min <= latestStartMin(durationMin); min += STEP_MIN) {
+  const w = BOOKABLE_HOURS[day.weekday]
+  for (let min = w.startMin; min <= latestStartMin(durationMin, w); min += STEP_MIN) {
     const start = zonedToUtc(day.y, day.m, day.d, min, tz)
     const end = new Date(start.getTime() + durationMin * 60e3)
+    if (!isBookable(start.getTime(), end.getTime(), tz)) continue
     out.push({
       start, end, minutes: min,
       past: start.getTime() < lead,
       busy: overlaps(start.getTime(), end.getTime(), busy),
-      work: overlapsWorkHours(start.getTime(), end.getTime(), tz),
     })
   }
   return out
+}
+
+/** "2026-11-07" for the day `date` falls on in `tz`. */
+export function dayKeyOf(date: Date, tz = YIYI_TZ) {
+  const p = zonedParts(date, tz)
+  return `${monthKey({ y: p.y, m: p.m })}-${String(p.d).padStart(2, '0')}`
 }
 
 export const overlaps = (start: number, end: number, busy: Busy[]) => busy.some((b) => start < b.end && end > b.start)

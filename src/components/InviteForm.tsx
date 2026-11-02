@@ -88,7 +88,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         setSlots(left)
         setRefreshKey((k) => k + 1)
         setError(slots.length - left.length > 1 ? 'Oops, some of those times just got booked. Pick others ♡' : 'Oops, that time just got booked. Pick another one ♡')
-      } else if (err instanceof InviteError && (err.code === 'invalid' || err.code === 'work')) {
+      } else if (err instanceof InviteError && (err.code === 'invalid' || err.code === 'work' || err.code === 'hours')) {
         setError(err.message)
       } else {
         setRelayDown(true)
