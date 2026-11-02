@@ -103,6 +103,7 @@ export function Connect() {
                     name={name}
                     onNameChange={setName}
                     tone="blush"
+                    booking={{ activity: option.activity, durationMin: option.durationMin }}
                   />
                 </div>
                 <button onClick={copy} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline-offset-2 hover:underline">

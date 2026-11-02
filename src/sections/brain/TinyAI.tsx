@@ -17,6 +17,9 @@ const TIME = [
   { hours: 10, label: 'All day' },
 ]
 
+/** "All-day mountain hike (8–9 hrs)" → "All-day mountain hike" for calendar titles. */
+const activityName = (name: string) => name.replace(/\s*\([^)]*\)\s*$/, '')
+
 const DEFAULT_PREFS: Prefs = { adventure: 0.85, energy: 0.8, brainy: 0.3, social: 0.3 }
 
 function Segmented<T extends string | number>({
@@ -235,7 +238,8 @@ export function TinyAI() {
                         key={shown.item.id}
                         source="Tiny AI on Yiyi's Universe"
                         subject={`Let's do this: ${shown.item.name} ${shown.item.emoji}`}
-                        message={`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in. When are you free?`}
+                        message={`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in!`}
+                        booking={{ activity: activityName(shown.item.name), durationMin: shown.item.hours * 60, encouraged: true }}
                       />
                     </motion.div>
                   )}

@@ -26,7 +26,8 @@ export const links = {
   email: 'yiyitan076@gmail.com',
   /**
    * Your Google Apps Script web-app URL (see scripts/invite-relay.gs). Invites are then sent
-   * from your Gmail to your Gmail. While '' the form opens the visitor's email app instead.
+   * from your Gmail to your Gmail, and the date picker greys out busy times from your calendars.
+   * While '' the form opens the visitor's email app instead (with the picked time + calendar links).
    */
   inviteScriptUrl: '',
   linkedin: 'https://www.linkedin.com/in/yiyitan',
@@ -301,6 +302,8 @@ export const connect = {
       label: "Let's talk AI & Data",
       emoji: '🧠',
       subject: "Let's talk AI & data",
+      activity: 'AI & data chat',
+      durationMin: 60,
       message:
         "Hi Yiyi! I came across your universe and loved the Tiny AI lab. I'm working on [a data/AI problem] and would love to swap notes on [experimentation / recommendations / applied AI]. Up for a chat?",
     },
@@ -309,6 +312,8 @@ export const connect = {
       label: "Let's build something",
       emoji: '🛠️',
       subject: "Let's build something together",
+      activity: 'Build session',
+      durationMin: 90,
       message:
         "Hi Yiyi! I have an idea that needs a data brain and founder energy: [your idea in one line]. Would you be open to a quick call to see if we should build it together?",
     },
@@ -317,6 +322,8 @@ export const connect = {
       label: "Let's go hiking",
       emoji: '🏔️',
       subject: 'Next summit?',
+      activity: 'Hike',
+      durationMin: 360,
       message:
         "Hi Yiyi! Your Summit Quest gave me serious trail envy. I know a great route near [place] — want to plan a hike? I'll bring the snacks.",
     },
@@ -325,6 +332,8 @@ export const connect = {
       label: "Let's talk startups",
       emoji: '🚀',
       subject: 'Founder to founder',
+      activity: 'Founder chat',
+      durationMin: 60,
       message:
         "Hi Yiyi! I loved reading about your LunchMe chapter. I'm [building / thinking about building] [something] and would love to hear what you learned along the way.",
     },
@@ -333,6 +342,8 @@ export const connect = {
       label: 'Just saying hi!',
       emoji: '👋',
       subject: 'Hi from your universe ♡',
+      activity: 'Coffee & hello',
+      durationMin: 60,
       message: "Hi Yiyi! Just wandered through your universe and wanted to say it made my day. Keep lifting, climbing and building! ♡",
     },
   ],
