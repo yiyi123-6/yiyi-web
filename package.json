@@ -10,7 +10,9 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "import:garmin": "node scripts/import-garmin.mjs",
-    "test:garmin": "node --test scripts/import-garmin.test.mjs"
+    "test:garmin": "node --test scripts/import-garmin.test.mjs",
+    "test:invite": "node --test scripts/invite-relay.test.mjs",
+    "test:calendar": "node --experimental-strip-types --no-warnings --test scripts/calendar.test.mjs"
   },
   "dependencies": {
     "@fontsource-variable/bricolage-grotesque": "^5.3.0",

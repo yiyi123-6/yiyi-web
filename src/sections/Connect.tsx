@@ -72,7 +72,7 @@ export function Connect() {
         <AnimatePresence mode="wait">
           {option ? (
             <motion.div
-              key={option.id}
+              key="pass"
               initial={{ opacity: 0, y: 30, rotate: -1 }}
               animate={{ opacity: 1, y: 0, rotate: 0 }}
               exit={{ opacity: 0, y: -20 }}
@@ -94,7 +94,6 @@ export function Connect() {
                 </label>
                 <div className="mt-4">
                   <InviteForm
-                    key={option.id}
                     source="Connect page on Yiyi's Universe"
                     subject={option.subject}
                     message={message}
@@ -103,6 +102,7 @@ export function Connect() {
                     name={name}
                     onNameChange={setName}
                     tone="blush"
+                    booking={{ activityId: option.id, activity: option.activity, durationMin: option.durationMin }}
                   />
                 </div>
                 <button onClick={copy} className="mt-3 inline-flex items-center gap-1 text-sm font-semibold text-ink/60 underline-offset-2 hover:underline">
