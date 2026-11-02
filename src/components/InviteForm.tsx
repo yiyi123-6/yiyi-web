@@ -8,6 +8,8 @@ import { InviteError, canSendDirectly, isEmail, sendInvite } from '../lib/invite
 import { SlotPicker } from './SlotPicker'
 
 export type Booking = {
+  /** Tiny AI item id or Connect option id, e.g. "all-day-hike". The relay uses it to decide early weekend starts. */
+  activityId: string
   /** Short name for the calendar event, e.g. "All-day mountain hike". */
   activity: string
   durationMin: number
@@ -39,6 +41,15 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
   const [relayDown, setRelayDown] = useState(false)
   const btn = useRef<HTMLButtonElement>(null)
   const visitorTz = useMemo(localTz, [])
+
+  const activityId = booking?.activityId
+  const [lastActivity, setLastActivity] = useState(activityId)
+  if (lastActivity !== activityId) {
+    setLastActivity(activityId)
+    setStatus('idle')
+    setError('')
+    setRelayDown(false)
+  }
 
   const name = nameProp ?? localName
   const setName = onNameChange ?? setLocalName
@@ -75,7 +86,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         replyTo: email.trim(),
         source,
         ...(timed && booking
-          ? { activity: booking.activity, slots: slots.map((s) => ({ start: s.start.toISOString(), end: s.end.toISOString() })), timeZone: visitorTz }
+          ? { activity: booking.activity, activityId: booking.activityId, slots: slots.map((s) => ({ start: s.start.toISOString(), end: s.end.toISOString() })), timeZone: visitorTz }
           : {}),
       })
       setStatus('sent')
@@ -125,7 +136,7 @@ export function InviteForm({ subject, message, source, onMessageChange, showMess
         </label>
       )}
       {booking && (
-        <SlotPicker value={slots} onChange={pickSlots} defaultDurationMin={booking.durationMin} refreshKey={refreshKey} />
+        <SlotPicker value={slots} onChange={pickSlots} defaultDurationMin={booking.durationMin} activityId={booking.activityId} activityName={booking.activity} refreshKey={refreshKey} />
       )}
       <div className="grid gap-3 sm:grid-cols-2">
         <label className="block">

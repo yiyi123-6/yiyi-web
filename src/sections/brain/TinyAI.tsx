@@ -239,7 +239,7 @@ export function TinyAI() {
                         source="Tiny AI on Yiyi's Universe"
                         subject={`Let's do this: ${shown.item.name} ${shown.item.emoji}`}
                         message={`Hi ${site.name}! Your Tiny AI says we should do "${shown.item.name}" ${shown.item.emoji} together. I'm in!`}
-                        booking={{ activity: activityName(shown.item.name), durationMin: shown.item.hours * 60 }}
+                        booking={{ activityId: shown.item.id, activity: activityName(shown.item.name), durationMin: shown.item.hours * 60 }}
                       />
                     </motion.div>
                   )}

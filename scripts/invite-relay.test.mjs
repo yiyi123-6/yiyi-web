@@ -20,8 +20,8 @@ function formatDate(date, tz, pattern) {
 }
 
 /** Loads invite-relay.gs into a sandbox with fake Apps Script services. */
-function load({ freeBusy = { primary: { busy: [] }, 'ee.official67@gmail.com': { busy: [] } }, now = NOW, props = {}, ics = {} } = {}) {
-  const store = { mail: [], events: [], props: { ...props }, cache: {}, fetches: [], icsFetches: [] }
+function load({ freeBusy = { primary: { busy: [] } }, now = NOW, props = {}, ics = {} } = {}) {
+  const store = { mail: [], events: [], props: { ...props }, cache: {}, fetches: [], icsFetches: [], logs: [], triggers: [], formatCalls: 0 }
   const makeEvent = (title, start, end, opts = {}) => {
     const ev = {
       id: `ev${store.events.length + 1}@google.com`, title, start, end, opts, color: null, deleted: false,
@@ -46,14 +46,29 @@ function load({ freeBusy = { primary: { busy: [] }, 'ee.official67@gmail.com': {
       getScriptProperties: () => ({
         setProperty: (k, v) => { store.props[k] = v }, getProperty: (k) => store.props[k] ?? null,
         deleteProperty: (k) => { delete store.props[k] }, getProperties: () => ({ ...store.props }),
+        setProperties: (o) => { for (const [k, v] of Object.entries(o)) store.props[k] = String(v) },
       }),
     },
     LockService: { getScriptLock: () => ({ waitLock() {}, releaseLock() {} }) },
     MailApp: { sendEmail: (m) => store.mail.push(m) },
     Session: { getEffectiveUser: () => ({ getEmail: () => 'yiyitan076@gmail.com' }) },
-    ScriptApp: { getOAuthToken: () => 'tok', getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }) },
-    Utilities: { getUuid: () => crypto.randomUUID(), formatDate },
+    ScriptApp: {
+      getOAuthToken: () => 'tok', getService: () => ({ getUrl: () => 'https://script.google.com/macros/s/X/exec' }),
+      getProjectTriggers: () => [...store.triggers],
+      deleteTrigger: (t) => { store.triggers = store.triggers.filter((x) => x !== t) },
+      newTrigger: (fn) => {
+        const t = { fn, getHandlerFunction: () => fn }
+        const b = {
+          timeBased: () => b, everyDays: (n) => { t.everyDays = n; return b }, atHour: (h) => { t.atHour = h; return b },
+          inTimezone: (z) => { t.tz = z; return b }, create: () => { store.triggers.push(t); return t },
+        }
+        return b
+      },
+    },
+    Logger: { log: (m) => store.logs.push(String(m)) },
+    Utilities: { getUuid: () => crypto.randomUUID(), formatDate: (...a) => { store.formatCalls++; return formatDate(...a) } },
     UrlFetchApp: {
+      fetchAll: (reqs) => reqs.map((r) => sandbox.UrlFetchApp.fetch(r.url, r)),
       fetch: (url, opts) => {
         if (!url.startsWith('https://www.googleapis.com/calendar/v3/freeBusy')) {
           store.icsFetches.push(url)
@@ -146,12 +161,39 @@ test('bookable windows: weekdays 19:00–22:00, weekends 9:00–22:00 Toronto, D
   assert.equal(gs.CONFIG.BOOKABLE_HOURS.length, 7)
 })
 
-test('BOOKABLE_HOURS matches src/lib/calendar.ts', () => {
+test('BOOKABLE_HOURS and EARLY_ACTIVITIES match src/lib/calendar.ts', () => {
   const { gs } = load()
   const ts = fs.readFileSync(path.join(import.meta.dirname, '../src/lib/calendar.ts'), 'utf8')
-  const block = ts.slice(ts.indexOf('BOOKABLE_HOURS: Window[] = ['), ts.indexOf(']', ts.indexOf('BOOKABLE_HOURS: Window[] = [') + 30) + 1)
-  const fromTs = vm.runInNewContext(block.replace('BOOKABLE_HOURS: Window[] =', '').trim())
-  assert.deepEqual(JSON.parse(JSON.stringify(fromTs)), JSON.parse(JSON.stringify(gs.CONFIG.BOOKABLE_HOURS)))
+  const literal = (marker) => {
+    const at = ts.indexOf(marker) + marker.length
+    return JSON.parse(JSON.stringify(vm.runInNewContext(ts.slice(at, ts.indexOf(']', at) + 1))))
+  }
+  assert.deepEqual(literal('BOOKABLE_HOURS: Window[] = '), JSON.parse(JSON.stringify(gs.CONFIG.BOOKABLE_HOURS)))
+  assert.deepEqual(literal('EARLY_ACTIVITIES = '), [...gs.CONFIG.EARLY_ACTIVITIES])
+})
+
+test('early weekend starts come from the relay\'s own activity list', () => {
+  const { gs, now } = load()
+  const v = (s, e, extra) => gs.validateRequest_({ replyTo: 'a@b.co', slots: [slot(s, e)], ...extra }, now)
+  const SAT_6 = '2026-11-07T11:00:00Z'
+  for (const id of ['all-day-hike', 'hike', 'summit', 'snowboard', 'run', 'trail-run', 'morning-run']) {
+    assert.equal(v(SAT_6, '2026-11-07T20:00:00Z', { activityId: id }).ok, true, `${id}: Saturday 6 AM`)
+  }
+  assert.equal(v('2026-11-08T11:00:00Z', '2026-11-08T12:30:00Z', { activityId: 'run' }).ok, true, 'run: Sunday 6 AM')
+  assert.equal(v('2026-11-07T10:30:00Z', '2026-11-07T11:30:00Z', { activityId: 'run' }).code, 'hours', 'run: 5:30 AM is still too early')
+  assert.equal(v('2026-11-07T11:00:00Z', '2026-11-07T23:00:00Z', { activityId: 'all-day-hike' }).ok, true, '12h hike 6 AM–6 PM')
+  const coffee = v(SAT_6, '2026-11-07T12:00:00Z', { activityId: 'hi' })
+  assert.equal(coffee.code, 'hours', 'coffee: Saturday 6 AM')
+  assert.match(coffee.message, /weekends 9 AM–10 PM/)
+  assert.match(v('2026-11-07T10:30:00Z', '2026-11-07T11:30:00Z', { activityId: 'hike' }).message, /weekends 6 AM–10 PM/)
+  assert.equal(v(SAT_6, '2026-11-07T12:00:00Z', { activityId: 'unknown' }).code, 'hours', 'unknown id → 9 AM')
+  assert.equal(v(SAT_6, '2026-11-07T12:00:00Z', {}).code, 'hours', 'no id → 9 AM')
+  assert.equal(v(SAT_6, '2026-11-07T12:00:00Z', { activityId: 'hi', early: true, earlyStart: true }).code, 'hours', 'client booleans are ignored')
+  assert.equal(v(SAT_6, '2026-11-07T12:00:00Z', { activityId: ['hike'] }).code, 'hours', 'only a plain id string counts')
+  assert.equal(v('2026-11-03T11:00:00Z', '2026-11-03T20:00:00Z', { activityId: 'all-day-hike' }).code, 'work', 'weekdays are unchanged for hikes')
+  const early = post(load().gs, { ...base, activityId: 'hike', activity: 'Hike', slots: [slot(SAT_6, '2026-11-07T17:00:00Z')] })
+  assert.equal(early.success, true, 'POST: hike at Saturday 6 AM')
+  assert.equal(post(load().gs, { ...base, activityId: 'ai', slots: [slot(SAT_6, '2026-11-07T12:00:00Z')] }).code, 'hours', 'POST: AI chat at Saturday 6 AM')
 })
 
 test('clampWindow_: never before now, ≤ 62 days per query, ≤ 2 years ahead', () => {
@@ -213,30 +255,37 @@ test('validateRequest_ with several slots: sorted, ≤ 5, no overlaps, single st
   assert.equal(legacy.slots.length, 1)
 })
 
-test('availability returns merged busy blocks only, flags a calendar that is not shared', () => {
+test('availability returns merged busy blocks only, from yiyitan076 only', () => {
   const { gs, store } = load({
     freeBusy: {
       primary: { busy: [{ start: '2026-11-05T14:00:00Z', end: '2026-11-05T15:00:00Z' }, { start: '2026-11-05T14:30:00Z', end: '2026-11-05T16:00:00Z' }] },
-      'ee.official67@gmail.com': { errors: [{ domain: 'global', reason: 'notFound' }], busy: [] },
     },
   })
   const res = gs.doGet({ parameter: { action: 'availability', from: '2026-11-02T00:00:00Z', to: '2026-12-01T00:00:00Z' } }).body
   assert.deepEqual(res.busy, [{ start: '2026-11-05T14:00:00.000Z', end: '2026-11-05T16:00:00.000Z' }])
-  assert.deepEqual(res.calendarsMissing, ['ee.official67@gmail.com'])
-  assert.deepEqual(Object.keys(res).sort(), ['busy', 'calendarsMissing', 'icloudErrors', 'success', 'timeZone'])
+  assert.deepEqual(res.calendarsMissing, [])
+  assert.deepEqual(Object.keys(res).sort(), ['busy', 'calendarsMissing', 'icloudErrors', 'icloudSyncedAt', 'success', 'timeZone'])
   assert.equal(res.icloudErrors, 0)
-  assert.deepEqual(store.fetches[0].body.items.map((i) => i.id), ['primary', 'ee.official67@gmail.com'])
+  assert.equal(res.icloudSyncedAt, null)
+  assert.deepEqual([...gs.CONFIG.CALENDAR_IDS], ['primary'])
+  assert.deepEqual(store.fetches[0].body.items.map((i) => i.id), ['primary'])
+  assert.doesNotMatch(source, /ee\.official67/, 'the second calendar is gone from the relay')
+})
+
+test('availability flags a calendar the free/busy API cannot read', () => {
+  const { gs } = load({ freeBusy: { primary: { errors: [{ domain: 'global', reason: 'notFound' }], busy: [] } } })
+  const res = gs.doGet({ parameter: { action: 'availability', from: '2026-11-02T00:00:00Z', to: '2026-12-01T00:00:00Z' } }).body
+  assert.deepEqual(res.calendarsMissing, ['primary'])
 })
 
 test('availability for a month far ahead queries exactly that window', () => {
   const { gs, store } = load({
     freeBusy: {
-      primary: { busy: [] },
-      'ee.official67@gmail.com': { busy: [{ start: '2027-05-15T14:00:00Z', end: '2027-05-15T16:00:00Z' }] },
+      primary: { busy: [{ start: '2027-05-15T14:00:00Z', end: '2027-05-15T16:00:00Z' }] },
     },
   })
   const res = gs.doGet({ parameter: { action: 'availability', from: '2027-05-01T04:00:00Z', to: '2027-06-01T04:00:00Z' } }).body
-  assert.equal(res.busy.length, 1, 'second calendar contributes')
+  assert.equal(res.busy.length, 1)
   assert.equal(store.fetches[0].body.timeMin, '2027-05-01T04:00:00.000Z')
   assert.equal(store.fetches[0].body.timeMax, '2027-06-01T04:00:00.000Z')
 })
@@ -255,7 +304,7 @@ test('POST rejects work hours and early weekend starts server-side', () => {
 
 test('three options: conflicts are reported, then holds + one email; accepting one removes every hold', () => {
   const { gs, store } = load({
-    freeBusy: { primary: { busy: [{ start: '2026-11-08T15:30:00Z', end: '2026-11-08T17:00:00Z' }] }, 'ee.official67@gmail.com': { busy: [] } },
+    freeBusy: { primary: { busy: [{ start: '2026-11-08T15:30:00Z', end: '2026-11-08T17:00:00Z' }] } },
   })
   const SAT_EVE = slot('2026-11-08T00:00:00.000Z', '2026-11-08T01:00:00.000Z') // Sat 7–8 PM
   const clash = post(gs, { ...base, slots: [slot(SAT_10, SAT_11), slot(SUN_10, SUN_11), SAT_EVE] })
@@ -545,23 +594,20 @@ test('ics: only the requested range is expanded, even for old endless series; lo
 const ICLOUD_A = 'https://p01-caldav.icloud.com/published/2/AAAA'
 const ICLOUD_B = 'https://p02-caldav.icloud.com/published/2/BBBB'
 const dentist = vcal(['UID:x', 'SUMMARY:Secret dentist', 'DESCRIPTION:private notes', 'DTSTART;TZID=America/Toronto:20261110T100000', 'DTEND;TZID=America/Toronto:20261110T110000'])
+const availability = (gs, from = '2026-11-02T00:00:00Z', to = '2026-12-01T00:00:00Z') => gs.doGet({ parameter: { action: 'availability', from, to } }).body
 
-test('availability merges iCloud busy blocks; webcal:// links work; failures are counted, not fatal', () => {
+test('before the first sync, availability reads iCloud live; webcal:// links work; failures are counted, not fatal', () => {
   const { gs, store } = load({
-    freeBusy: { primary: { busy: [{ start: '2026-11-10T16:00:00Z', end: '2026-11-10T17:00:00Z' }] }, 'ee.official67@gmail.com': { busy: [] } },
+    freeBusy: { primary: { busy: [{ start: '2026-11-10T16:00:00Z', end: '2026-11-10T17:00:00Z' }] } },
     props: { ICLOUD_ICS_URLS: `webcal://p01-caldav.icloud.com/published/2/AAAA,\n  ${ICLOUD_B}\nnot-a-link` },
     ics: { [ICLOUD_A]: dentist, [ICLOUD_B]: { code: 404 } },
   })
-  const res = gs.doGet({ parameter: { action: 'availability', from: '2026-11-02T00:00:00Z', to: '2026-12-01T00:00:00Z' } }).body
+  const res = availability(gs)
   assert.deepEqual(res.busy, [{ start: '2026-11-10T15:00:00.000Z', end: '2026-11-10T17:00:00.000Z' }], 'iCloud 10–11 merged with Google 11–12')
   assert.equal(res.icloudErrors, 2, 'one 404 and one entry that is not a link')
+  assert.equal(res.icloudSyncedAt, null)
   assert.deepEqual(store.icsFetches, [ICLOUD_A, ICLOUD_B])
   assert.doesNotMatch(JSON.stringify(res), /dentist|private/)
-  assert.doesNotMatch(JSON.stringify(store.cache), /dentist|private/, 'titles are not even cached')
-
-  const again = gs.doGet({ parameter: { action: 'availability', from: '2026-11-03T00:00:00Z', to: '2026-12-01T00:00:00Z' } }).body
-  assert.equal(again.busy.length, 1)
-  assert.deepEqual(store.icsFetches, [ICLOUD_A, ICLOUD_B, ICLOUD_B], 'the working feed comes from the 10-minute cache')
 })
 
 test('iCloud fetch throwing or returning junk is skipped', () => {
@@ -569,39 +615,200 @@ test('iCloud fetch throwing or returning junk is skipped', () => {
     props: { ICLOUD_ICS_URLS: `${ICLOUD_A} ${ICLOUD_B}` },
     ics: { [ICLOUD_A]: new Error('DNS error'), [ICLOUD_B]: '<html>Sign in</html>' },
   })
-  const res = gs.doGet({ parameter: { action: 'availability', from: '2026-11-02T00:00:00Z', to: '2026-12-01T00:00:00Z' } }).body
+  const res = availability(gs)
   assert.equal(res.success, true)
   assert.deepEqual(res.busy, [])
   assert.equal(res.icloudErrors, 2)
 })
 
-test('no ICLOUD_ICS_URLS → no iCloud fetches', () => {
+test('no ICLOUD_ICS_URLS → no iCloud fetches, sync stores nothing', () => {
   const { gs, store } = load()
-  gs.doGet({ parameter: { action: 'availability', from: '2026-11-02T00:00:00Z', to: '2026-12-01T00:00:00Z' } })
+  availability(gs)
+  const r = gs.syncIcloud()
+  assert.equal(r.read, 0)
   assert.deepEqual(store.icsFetches, [])
+  assert.equal(availability(gs, '2026-11-03T00:00:00Z').icloudSyncedAt, null)
 })
 
-test('POST conflict check includes iCloud events', () => {
-  const sat = vcal(['UID:s', 'DTSTART;TZID=America/Toronto:20261107T103000', 'DURATION:PT1H'])
-  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: ICLOUD_A }, ics: { [ICLOUD_A]: sat } })
+test('busy blocks are stored compactly and rounded outwards to whole minutes', () => {
+  const { gs } = load()
+  const busy = [{ start: Date.parse('2026-11-10T15:00:30Z'), end: Date.parse('2026-11-10T16:00:10Z') }, { start: Date.parse('2027-12-01T00:00:00Z'), end: Date.parse('2027-12-01T09:00:00Z') }]
+  const text = gs.encodeBusy_(busy)
+  assert.ok(text.length < 25, text)
+  assert.deepEqual(JSON.parse(JSON.stringify(gs.decodeBusy_(text))).map((b) => [iso(b.start), iso(b.end)]), [
+    ['2026-11-10T15:00:00.000Z', '2026-11-10T16:01:00.000Z'],
+    ['2027-12-01T00:00:00.000Z', '2027-12-01T09:00:00.000Z'],
+  ])
+  assert.deepEqual([...gs.decodeBusy_('')], [])
+})
+
+test('syncIcloud stores a snapshot; availability then reads it without fetching and reports icloudSyncedAt', () => {
+  const { gs, store, now } = load({ props: { ICLOUD_ICS_URLS: ICLOUD_A }, ics: { [ICLOUD_A]: dentist } })
+  const r = gs.syncIcloud()
+  assert.equal(r.read, 1)
+  assert.equal(r.events, 1)
+  assert.equal(r.blocks, 1)
+  assert.equal(r.until, now + 400 * DAY)
+  assert.doesNotMatch(JSON.stringify(store.props), /dentist|private/, 'no titles stored')
+  store.icsFetches.length = 0
+  const res = availability(gs)
+  assert.deepEqual(res.busy, [{ start: '2026-11-10T15:00:00.000Z', end: '2026-11-10T16:00:00.000Z' }])
+  assert.equal(res.icloudSyncedAt, iso(now))
+  assert.equal(res.icloudErrors, 0)
+  assert.deepEqual(store.icsFetches, [], 'served from the snapshot')
+
+  availability(gs, iso(now + 390 * DAY), iso(now + 420 * DAY))
+  assert.deepEqual(store.icsFetches, [ICLOUD_A], 'months past the 400-day snapshot are read live')
+})
+
+test('re-sync swaps chunks cleanly; a calendar that fails keeps its previous busy times', () => {
+  const ics = { [ICLOUD_A]: dentist, [ICLOUD_B]: vcal(['UID:y', 'DTSTART:20261112T150000Z', 'DURATION:PT1H']) }
+  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: `${ICLOUD_A}\n${ICLOUD_B}` }, ics })
+  gs.syncIcloud()
+  ics[ICLOUD_B] = { code: 503 }
+  const r = gs.syncIcloud()
+  assert.equal(r.errors, 1)
+  const res = availability(gs)
+  assert.equal(res.busy.length, 2, 'the Nov 12 block from the unreadable calendar is kept')
+  assert.equal(res.icloudErrors, 1)
+  const chunkGens = new Set(Object.keys(store.props).filter((k) => /^icloud_[a-z0-9]+_\d+$/.test(k)).map((k) => k.split('_')[1]))
+  assert.equal(chunkGens.size, 1, 'old chunks are deleted')
+})
+
+test('POST reads iCloud live, so an event added after the morning sync still blocks the time', () => {
+  const ics = { [ICLOUD_A]: vcal() }
+  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: ICLOUD_A }, ics })
+  gs.syncIcloud()
+  assert.deepEqual(availability(gs).busy, [])
+  ics[ICLOUD_A] = vcal(['UID:new', 'DTSTART;TZID=America/Toronto:20261107T103000', 'DURATION:PT1H'])
+  store.icsFetches.length = 0
   const res = post(gs, { ...base, slots: [slot(SAT_10, SAT_11), slot(SUN_10, SUN_11)] })
   assert.equal(res.code, 'conflict')
   assert.deepEqual(res.conflicts, [SAT_10])
+  assert.equal(store.icsFetches.length, 1, 'one fetch per calendar for all options')
   assert.equal(store.events.length, 0)
-  assert.equal(post(gs, { ...base, slots: [slot(SUN_10, SUN_11)] }).success, true)
 })
 
-test('big iCloud feeds are cached in chunks and read back intact', () => {
-  const many = vcal(...Array.from({ length: 1500 }, (_, i) => [
-    `UID:event-${i}@icloud.com`, `SUMMARY:Thing ${i}`,
-    `DTSTART:${iso(Date.parse('2026-11-02T13:00:00Z') + i * DAY).replace(/[-:]|\.000/g, '')}`, 'DURATION:PT1H',
-  ]))
-  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: ICLOUD_A }, ics: { [ICLOUD_A]: many } })
-  const first = gs.icloudBusy_(Date.parse('2026-11-02T00:00:00Z'), Date.parse('2026-12-01T00:00:00Z'))
-  const chunkKeys = Object.keys(store.cache).filter((k) => /^ics:.+:\d+$/.test(k))
-  assert.ok(chunkKeys.length > 1, `split into ${chunkKeys.length} chunks`)
-  const second = gs.icloudBusy_(Date.parse('2026-11-02T00:00:00Z'), Date.parse('2026-12-01T00:00:00Z'))
-  assert.equal(store.icsFetches.length, 1)
-  assert.equal(first.busy.length, 29)
-  assert.deepEqual(JSON.parse(JSON.stringify(second)), JSON.parse(JSON.stringify(first)))
+test('POST falls back to the snapshot when the live iCloud fetch fails', () => {
+  const ics = { [ICLOUD_A]: vcal(['UID:s', 'DTSTART;TZID=America/Toronto:20261107T103000', 'DURATION:PT1H']) }
+  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: ICLOUD_A }, ics })
+  gs.syncIcloud()
+  ics[ICLOUD_A] = new Error('timeout')
+  assert.equal(post(gs, { ...base, slots: [slot(SAT_10, SAT_11)] }).code, 'conflict')
+  assert.equal(post(gs, { ...base, slots: [slot(SUN_10, SUN_11)] }).success, true)
+  assert.equal(store.events.length, 1)
+})
+
+test('installDailySync is idempotent: one syncIcloud trigger, daily ~5 AM Toronto', () => {
+  const { gs, store } = load()
+  gs.installDailySync()
+  gs.installDailySync()
+  assert.equal(store.triggers.length, 1)
+  assert.deepEqual({ ...store.triggers[0], getHandlerFunction: undefined }, { fn: 'syncIcloud', everyDays: 1, atHour: 5, tz: 'America/Toronto', getHandlerFunction: undefined })
+})
+
+test('setIcloudUrls: committed list is empty; saving links installs the sync and logs counts only', () => {
+  assert.match(source, /const ICLOUD_URLS_TO_SAVE = \[\s*(\/\*[^*]*\*\/)?\s*\];/, 'ICLOUD_URLS_TO_SAVE must be committed empty')
+  const { gs, store } = load({ ics: { [ICLOUD_A]: dentist, [ICLOUD_B]: { code: 404 } } })
+  assert.equal(gs.setIcloudUrls(), null, 'nothing to save')
+  assert.match(store.logs[0], /ICLOUD_URLS_TO_SAVE is empty/)
+  assert.equal(store.props.ICLOUD_ICS_URLS, undefined)
+
+  const r = gs.setIcloudUrls(['webcal://p01-caldav.icloud.com/published/2/AAAA', ` ${ICLOUD_B} `])
+  assert.equal(store.props.ICLOUD_ICS_URLS, `webcal://p01-caldav.icloud.com/published/2/AAAA\n${ICLOUD_B}`)
+  assert.equal(store.triggers.length, 1)
+  assert.equal(r.read, 1)
+  const log = store.logs[1]
+  assert.match(log, /Calendars read: 1 of 2 · events: 1 · busy blocks: 1 · errors: 1/)
+  assert.match(log, /Calendar 2: not read \(HTTP 404\)/)
+  assert.match(log, /empty ICLOUD_URLS_TO_SAVE again/)
+  assert.doesNotMatch(log, /dentist|private|icloud\.com|AAAA/, 'no titles or links in the log')
+})
+
+/* A synthetic feed shaped like Yiyi's real iCloud calendars (no real content): Apple-style properties and
+   alarms, folded long lines, lots of RRULEs, TZIDs without any VTIMEZONE block. */
+function rng(seed) {
+  let x = seed
+  return () => ((x = (x * 1103515245 + 12345) % 2147483648) / 2147483648)
+}
+const fold = (line) => {
+  const out = []
+  for (let i = 0; i < line.length; i += i ? 74 : 75) out.push((i ? ' ' : '') + line.slice(i, i ? i + 74 : 75))
+  return out
+}
+function syntheticFeed(seed, count, zones) {
+  const r = rng(seed)
+  const stamp = (t) => iso(t).replace(/[-:]|\.000/g, '')
+  const local = (t) => stamp(t).replace('Z', '')
+  const days = ['MO', 'TU', 'WE', 'TH', 'FR', 'SA', 'SU']
+  const events = []
+  for (let i = 0; i < count; i++) {
+    const tz = zones[i % zones.length]
+    const start = Date.parse('2024-01-01T00:00:00Z') + Math.floor(r() * 1100) * DAY + (6 + Math.floor(r() * 14)) * HOUR + (r() < 0.5 ? 30 * 60e3 : 0)
+    const lines = [
+      `UID:${(seed * 100000 + i).toString(16).toUpperCase()}-SYNTH-${i}@icloud.com`,
+      'DTSTAMP:20261101T120000Z', 'CREATED:20240101T120000Z', 'LAST-MODIFIED:20261001T120000Z', `SEQUENCE:${i % 4}`,
+      `SUMMARY:Synthetic event ${i}`,
+      ...fold(`DESCRIPTION:${'Placeholder notes for a synthetic test event. '.repeat(1 + (i % 3))}`),
+      `LOCATION:Place ${i}`, 'X-APPLE-TRAVEL-ADVISORY-BEHAVIOR:AUTOMATIC',
+    ]
+    const kind = r()
+    if (kind < 0.12) {
+      lines.push(`DTSTART;VALUE=DATE:${local(start).slice(0, 8)}`, `DTEND;VALUE=DATE:${local(start + DAY).slice(0, 8)}`, 'TRANSP:TRANSPARENT')
+    } else {
+      lines.push(`DTSTART;TZID=${tz}:${local(start)}`, `DTEND;TZID=${tz}:${local(start + (1 + Math.floor(r() * 3)) * HOUR)}`)
+    }
+    if (kind > 0.45) {
+      const f = r()
+      lines.push(
+        f < 0.45 ? `RRULE:FREQ=WEEKLY;BYDAY=${days[i % 7]}${i % 3 ? '' : `,${days[(i + 2) % 7]}`}${i % 5 ? '' : ';INTERVAL=2'}`
+        : f < 0.6 ? `RRULE:FREQ=DAILY;COUNT=${5 + (i % 40)}`
+        : f < 0.8 ? `RRULE:FREQ=MONTHLY;BYDAY=${i % 2 ? '2MO' : '-1FR'}`
+        : f < 0.9 ? 'RRULE:FREQ=YEARLY'
+        : `RRULE:FREQ=WEEKLY;UNTIL=${stamp(start + 200 * DAY)}`,
+      )
+      if (i % 6 === 0) lines.push(`EXDATE;TZID=${tz}:${local(start + 7 * DAY)}`)
+    }
+    lines.push('BEGIN:VALARM', 'ACTION:DISPLAY', 'DESCRIPTION:Reminder', 'TRIGGER:-PT15M', `UID:alarm-${i}`, 'END:VALARM')
+    events.push(lines)
+  }
+  return vcal(...events)
+}
+const ZONES = ['America/Toronto', 'America/Toronto', 'America/Los_Angeles', 'America/Vancouver']
+const REAL_SHAPE = [325, 300, 170, 120, 60, 25, 0].map((n, i) => syntheticFeed(i + 1, n, ZONES))
+const REAL_URLS = REAL_SHAPE.map((_, i) => `https://p${10 + i}-caldav.icloud.com/published/2/SYNTH${i}`)
+
+test('synthetic fixture has the shape of the real feeds', () => {
+  const counts = REAL_SHAPE.map((t) => (t.match(/^BEGIN:VEVENT/gm) || []).length)
+  assert.deepEqual(counts, [325, 300, 170, 120, 60, 25, 0])
+  assert.ok(REAL_SHAPE[0].length > 150e3 && REAL_SHAPE[0].length < 220e3, `largest feed ${(REAL_SHAPE[0].length / 1e3).toFixed(0)} KB`)
+  assert.ok(REAL_SHAPE.every((t) => !t.includes('VTIMEZONE')))
+  assert.ok(REAL_SHAPE[0].includes('TZID=America/Vancouver') && REAL_SHAPE[0].includes('TZID=America/Los_Angeles'))
+  assert.ok((REAL_SHAPE[0].match(/^RRULE/gm) || []).length > 150)
+})
+
+test('daily sync of 7 real-shaped feeds (~1000 events, RRULEs, 400 days) is fast and small', () => {
+  const { gs, store } = load({ props: { ICLOUD_ICS_URLS: REAL_URLS.join(',\n') }, ics: Object.fromEntries(REAL_URLS.map((u, i) => [u, REAL_SHAPE[i]])) })
+  assert.deepEqual([...gs.icloudUrls_().urls], REAL_URLS)
+  for (const z of ZONES) assert.equal(gs.icsZone_(z), z, 'TZIDs are IANA names and resolve directly')
+  const t0 = performance.now()
+  const r = gs.syncIcloud()
+  const ms = performance.now() - t0
+  assert.equal(r.read, 7, 'the empty calendar counts as read')
+  assert.equal(r.errors, 0)
+  assert.equal(r.events, 1000)
+  assert.ok(r.blocks > 300, `${r.blocks} busy blocks`)
+  const chunks = Object.entries(store.props).filter(([k]) => /^icloud_[a-z0-9]+_\d+$/.test(k))
+  const size = chunks.reduce((n, [, v]) => n + v.length, 0)
+  assert.ok(chunks.every(([, v]) => v.length <= 9000), 'every chunk fits the 9 KB property limit')
+  assert.ok(size < 100e3, `snapshot ${(size / 1e3).toFixed(1)} KB of the 500 KB budget`)
+  assert.doesNotMatch(JSON.stringify(store.props), /Synthetic|Placeholder|Place \d/)
+  // Apps Script is slower than Node; formatDate calls are the expensive part there.
+  assert.ok(ms < 3000, `sync took ${ms.toFixed(0)} ms`)
+  assert.ok(store.formatCalls < 15000, `${store.formatCalls} Utilities.formatDate calls`)
+  console.log(`  real-shaped sync: ${r.events} events → ${r.blocks} blocks, ${(size / 1e3).toFixed(1)} KB in ${chunks.length} properties, ${ms.toFixed(0)} ms, ${store.formatCalls} formatDate calls`)
+
+  const busy = availability(gs).busy
+  assert.ok(busy.length > 0)
+  assert.ok(busy.every((b) => Object.keys(b).join() === 'start,end'))
 })

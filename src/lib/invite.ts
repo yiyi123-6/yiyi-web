@@ -10,6 +10,8 @@ export type Invite = {
   source: string
   /** Used for the calendar hold title, e.g. "All-day mountain hike". */
   activity?: string
+  /** Activity id; the relay checks it against its own list of early-start activities. */
+  activityId?: string
   /** Proposed times (ISO instants, up to 5). The relay checks Yiyi's calendars and holds each one on hers. */
   slots?: { start: string; end: string }[]
   /** The visitor's IANA time zone, so the email shows their time too. */

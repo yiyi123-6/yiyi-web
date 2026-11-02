@@ -15,36 +15,42 @@
  *        Execute as: Me      Who has access: Anyone
  *   3. Authorize (Gmail + Calendar + external requests), copy the Web app URL (ends in /exec)
  *   4. Paste it into links.inviteScriptUrl in src/data/content.ts and push.
- *   5. Optional, iCloud: Project Settings → Script properties → Add script property
- *        ICLOUD_ICS_URLS = your public iCloud calendar link(s), comma or new-line separated.
+ *   5. Optional, iCloud: paste your public iCloud links into ICLOUD_URLS_TO_SAVE (near the end), pick
+ *      setIcloudUrls in the toolbar → Run, check the Execution log, then empty the list again and Save.
+ *      It stores the links in the ICLOUD_ICS_URLS script property and syncs busy times daily (~5 AM).
  * After editing this file: Deploy → Manage deployments → ✏️ → Version: New version → Deploy
  * (the /exec URL stays the same). New permissions prompt for re-authorization.
  */
 
 var CONFIG = {
   /** Busy times come from all of these. The first one is yours: holds and confirmed plans go there. */
-  CALENDAR_IDS: ['primary', 'ee.official67@gmail.com'],
+  CALENDAR_IDS: ['primary'],
   TIME_ZONE: 'America/Toronto',
   /**
    * When plans can happen, in TIME_ZONE, by weekday (0 = Sunday … 6 = Saturday), in minutes after midnight.
    * A plan has to start and end inside its day's window. `work` days are work time until the window opens.
-   * Keep in sync with BOOKABLE_HOURS in src/lib/calendar.ts.
+   * `earlyStartMin` replaces `startMin` for EARLY_ACTIVITIES.
+   * Keep both in sync with BOOKABLE_HOURS / EARLY_ACTIVITIES in src/lib/calendar.ts.
    */
   BOOKABLE_HOURS: [
-    { startMin: 9 * 60, endMin: 22 * 60 }, // Sun
+    { startMin: 9 * 60, endMin: 22 * 60, earlyStartMin: 6 * 60 }, // Sun
     { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Mon
     { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Tue
     { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Wed
     { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Thu
     { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Fri
-    { startMin: 9 * 60, endMin: 22 * 60 }, // Sat
+    { startMin: 9 * 60, endMin: 22 * 60, earlyStartMin: 6 * 60 }, // Sat
   ],
+  /** Activity ids (Tiny AI items and Connect options) that may use `earlyStartMin`: runs, hikes, snowboarding. */
+  EARLY_ACTIVITIES: ['run', 'morning-run', 'trail-run', 'hike', 'all-day-hike', 'summit', 'snowboard'],
   /**
-   * Optional iCloud busy times: Project Settings → Script properties → ICLOUD_ICS_URLS = your public
-   * iCloud calendar link(s) (webcal:// is fine), separated by commas or new lines. Never put them in this file.
+   * Optional iCloud busy times: script property ICLOUD_ICS_URLS = your public iCloud calendar link(s)
+   * (webcal:// is fine), separated by commas or new lines. Save them with setIcloudUrls() below, never in this file.
    */
   ICLOUD_PROPERTY: 'ICLOUD_ICS_URLS',
-  ICLOUD_CACHE_SEC: 600,
+  /** syncIcloud() stores busy times from now to this many days ahead; it runs daily around ICLOUD_SYNC_HOUR. */
+  ICLOUD_SYNC_DAYS: 400,
+  ICLOUD_SYNC_HOUR: 5,
   /** Longest range one availability query may cover (about one month view). */
   MAX_QUERY_DAYS: 62,
   /** How far ahead plans can be requested. */
@@ -102,10 +108,48 @@ function overlapsAny_(start, end, busy) {
   return busy.some(function (b) { return start < b.end && end > b.start; });
 }
 
+var OFFSETS_ = {};
+var SHIFTS_ = {};
+var OFFSET_STEP_MS = 15 * 60 * 1000;
+
+function rawOffset_(ms, zone) {
+  return Date.parse(Utilities.formatDate(new Date(ms), zone, "yyyy-MM-dd'T'HH:mm:ss") + 'Z') - ms;
+}
+
+function dayOffset_(day, zone) {
+  var key = zone + '@' + day;
+  if (!(key in OFFSETS_)) OFFSETS_[key] = rawOffset_(day, zone);
+  return OFFSETS_[key];
+}
+
+/**
+ * UTC offset of `zone` at `ms`, with about one Utilities.formatDate call per zone and day (expanding a year
+ * of iCloud events would otherwise take tens of thousands). Assumes the offset changes at most once per
+ * UTC day, on a quarter hour, which holds for every real zone; the change itself is found by bisection.
+ */
+function offsetAt_(ms, zone) {
+  var day = Math.floor(ms / DAY_MS) * DAY_MS;
+  var a = dayOffset_(day, zone);
+  var b = dayOffset_(day + DAY_MS, zone);
+  if (a === b) return a;
+  var key = zone + '@' + day;
+  if (!(key in SHIFTS_)) {
+    var lo = day;
+    var hi = day + DAY_MS;
+    while (hi - lo > OFFSET_STEP_MS) {
+      var mid = lo + Math.floor((hi - lo) / 2 / OFFSET_STEP_MS) * OFFSET_STEP_MS;
+      if (rawOffset_(mid, zone) === a) lo = mid;
+      else hi = mid;
+    }
+    SHIFTS_[key] = hi;
+  }
+  return ms < SHIFTS_[key] ? a : b;
+}
+
 /** Wall-clock time in `tz` (default TIME_ZONE), expressed as if it were UTC ms (so day/minute math is plain arithmetic). */
 function wallMs_(ms, tz) {
   if (tz === 'UTC') return ms;
-  return Date.parse(Utilities.formatDate(new Date(ms), tz || CONFIG.TIME_ZONE, "yyyy-MM-dd'T'HH:mm:ss") + 'Z');
+  return ms + offsetAt_(ms, tz || CONFIG.TIME_ZONE);
 }
 
 /** Inverse of wallMs_: a wall-clock time in `tz` → the real instant. */
@@ -119,13 +163,19 @@ function zonedMs_(wall, tz) {
  * null if [start, end) starts and ends inside the bookable window of the Toronto day it starts on,
  * otherwise 'work' (starts during weekday work time) or 'hours' (outside the window some other way).
  */
-function bookingProblem_(start, end) {
+function bookingProblem_(start, end, early) {
   var a = wallMs_(start);
   var b = wallMs_(end);
   var day = Math.floor(a / DAY_MS) * DAY_MS;
   var w = CONFIG.BOOKABLE_HOURS[new Date(day).getUTCDay()];
-  if (a < day + w.startMin * MIN_MS) return w.work ? 'work' : 'hours';
+  var open = early && w.earlyStartMin != null ? w.earlyStartMin : w.startMin;
+  if (a < day + open * MIN_MS) return w.work ? 'work' : 'hours';
   return b <= day + w.endMin * MIN_MS ? null : 'hours';
+}
+
+/** Early weekend starts are decided here, from the activity id, never from anything else the client says. */
+function startsEarly_(activityId) {
+  return typeof activityId === 'string' && CONFIG.EARLY_ACTIVITIES.indexOf(activityId) >= 0;
 }
 
 /** "7 PM", "9:30 AM". */
@@ -135,9 +185,11 @@ function clockLabel_(min) {
   return (h % 12 || 12) + (m ? ':' + (m < 10 ? '0' : '') + m : '') + (h < 12 ? ' AM' : ' PM');
 }
 
-function hoursSummary_() {
-  var label = function (w) { return clockLabel_(w.startMin) + '–' + clockLabel_(w.endMin); };
-  return 'weekdays ' + label(CONFIG.BOOKABLE_HOURS[1]) + ' or weekends ' + label(CONFIG.BOOKABLE_HOURS[6]) + ' (Toronto)';
+function hoursSummary_(early) {
+  var weekend = CONFIG.BOOKABLE_HOURS[6];
+  var label = function (from, w) { return clockLabel_(from) + '–' + clockLabel_(w.endMin); };
+  return 'weekdays ' + label(CONFIG.BOOKABLE_HOURS[1].startMin, CONFIG.BOOKABLE_HOURS[1]) + ' or weekends ' +
+    label(early && weekend.earlyStartMin != null ? weekend.earlyStartMin : weekend.startMin, weekend) + ' (Toronto)';
 }
 
 /** Clamps an availability window to start no earlier than now, end within MAX_AHEAD_DAYS, span ≤ MAX_QUERY_DAYS. */
@@ -170,6 +222,7 @@ function validateRequest_(d, nowMs) {
     message: clip_(d.message, 5000),
     source: clip_(d.source, 100),
     activity: clip_(d.activity, 120).trim(),
+    early: startsEarly_(d.activityId),
     timeZone: /^[A-Za-z_]+(\/[A-Za-z0-9_+\-]+){0,2}$/.test(String(d.timeZone || '')) ? String(d.timeZone) : '',
   };
   var raw = rawSlots_(d);
@@ -188,9 +241,9 @@ function validateRequest_(d, nowMs) {
     if (end - start > CONFIG.MAX_DURATION_MIN * MIN_MS) return bad('Plans can be up to 12 hours.');
     if (start < nowMs + CONFIG.MIN_LEAD_MIN * MIN_MS) return bad('Pick a time a little further in the future.');
     if (start > nowMs + CONFIG.MAX_AHEAD_DAYS * DAY_MS) return bad('That is a bit too far ahead. Pick something in the next two years.');
-    var problem = bookingProblem_(start, end);
-    if (problem === 'work') return { ok: false, code: 'work', message: 'Weekdays until ' + clockLabel_(CONFIG.BOOKABLE_HOURS[1].startMin) + ' (Toronto) are work hours. Plans fit ' + hoursSummary_() + '.' };
-    if (problem) return { ok: false, code: 'hours', message: 'Plans fit ' + hoursSummary_() + '. Pick another time?' };
+    var problem = bookingProblem_(start, end, base.early);
+    if (problem === 'work') return { ok: false, code: 'work', message: 'Weekdays until ' + clockLabel_(CONFIG.BOOKABLE_HOURS[1].startMin) + ' (Toronto) are work hours. Plans fit ' + hoursSummary_(base.early) + '.' };
+    if (problem) return { ok: false, code: 'hours', message: 'Plans fit ' + hoursSummary_(base.early) + '. Pick another time?' };
     slots.push({ start: start, end: end });
   }
   slots.sort(function (a, b) { return a.start - b.start; });
@@ -250,7 +303,8 @@ function doPost(e) {
     var lock = LockService.getScriptLock();
     lock.waitLock(15000);
     try {
-      var conflicts = r.slots.filter(function (s) { return overlapsAny_(s.start, s.end, getBusy_(s.start, s.end).busy); });
+      var busy = getBusy_(r.slots[0].start, Math.max.apply(null, r.slots.map(function (s) { return s.end; })), true).busy;
+      var conflicts = r.slots.filter(function (s) { return overlapsAny_(s.start, s.end, busy); });
       if (conflicts.length) {
         return json_({
           success: false,
@@ -323,7 +377,7 @@ function respondToRequest(action, id, token, option) {
 
 function availability_(fromIso, toIso) {
   var win = clampWindow_(fromIso, toIso, Date.now());
-  if (!win) return { success: true, busy: [], calendarsMissing: [], icloudErrors: 0 };
+  if (!win) return { success: true, busy: [], calendarsMissing: [], icloudErrors: 0, icloudSyncedAt: null };
   var cache = CacheService.getScriptCache();
   var key = 'av:' + (cache.get('gen') || '0') + ':' + win.from + ':' + win.to;
   var hit = cache.get(key);
@@ -336,6 +390,7 @@ function availability_(fromIso, toIso) {
     busy: res.busy.map(function (b) { return { start: new Date(b.start).toISOString(), end: new Date(b.end).toISOString() }; }),
     calendarsMissing: res.missing,
     icloudErrors: res.icloudErrors,
+    icloudSyncedAt: res.icloudSyncedAt,
   };
   try { cache.put(key, JSON.stringify(out), 60); } catch (err) { /* too big to cache */ }
   return out;
@@ -343,17 +398,23 @@ function availability_(fromIso, toIso) {
 
 /**
  * Merged busy blocks across CALENDAR_IDS plus any iCloud links in ICLOUD_ICS_URLS.
- * Free/busy API first (works with "See only free/busy" sharing).
+ * Google: free/busy API first, CalendarApp as a fallback. iCloud: the daily snapshot, or with `live`
+ * (used right before holds are created) a fresh fetch that falls back to the snapshot.
  */
-function getBusy_(from, to) {
+function getBusy_(from, to, live) {
   var google;
   try {
     google = freeBusyApi_(from, to);
   } catch (err) {
     google = calendarAppBusy_(from, to);
   }
-  var icloud = icloudBusy_(from, to);
-  return { busy: mergeIntervals_(google.busy.concat(icloud.busy)), missing: google.missing, icloudErrors: icloud.errors };
+  var icloud = live ? icloudLive_(from, to) : icloudStored_(from, to);
+  return {
+    busy: mergeIntervals_(google.busy.concat(icloud.busy)),
+    missing: google.missing,
+    icloudErrors: icloud.errors,
+    icloudSyncedAt: icloud.syncedAt ? new Date(icloud.syncedAt).toISOString() : null,
+  };
 }
 
 function freeBusyApi_(from, to) {
@@ -418,8 +479,9 @@ var ICS_ZONE_ALIASES = {
 };
 var ICS_MAX_URLS = 10;
 var ICS_MAX_PERIODS = 50000;
-var ICS_CHUNK_CHARS = 25000;
-var ICS_MAX_CHUNKS = 40;
+var ICLOUD_CHUNK_CHARS = 8500; // Script Properties allow 9 KB per value
+var ICLOUD_MAX_CHARS = 400000; // …and 500 KB in total, shared with pending requests
+var ICLOUD_META = 'icloud_meta';
 
 /** TZID parameter → a time zone Utilities.formatDate understands. Unknown or missing → TIME_ZONE. */
 function icsZone_(tzid) {
@@ -706,7 +768,7 @@ function icsInZone_(t, start) {
  * Busy blocks (epoch ms, merged) from an .ics feed that overlap [from, to). Skips TRANSPARENT and CANCELLED
  * events, honours RRULE/RDATE/EXDATE and RECURRENCE-ID overrides. Only start/end ever leave this function.
  */
-function icsBusy_(text, from, to) {
+function icsBusy_(text, from, to, stats) {
   var memo = {};
   var wallAt = function (ms, tz) {
     var key = tz + '@' + ms;
@@ -714,6 +776,7 @@ function icsBusy_(text, from, to) {
     return memo[key];
   };
   var events = icsEvents_(text).map(icsEvent_).filter(Boolean);
+  if (stats) stats.events = events.length;
   var moved = {};
   events.forEach(function (ev) {
     if (ev.recurrenceId && ev.uid) (moved[ev.uid] = moved[ev.uid] || []).push(ev.recurrenceId);
@@ -762,58 +825,205 @@ function icloudUrls_() {
   return { urls: urls, bad: bad };
 }
 
-function hash_(s) {
-  var a = 5381;
-  var b = 52711;
-  for (var i = 0; i < s.length; i++) {
-    var c = s.charCodeAt(i);
-    a = ((a * 33) ^ c) | 0;
-    b = ((b * 31) ^ c) | 0;
+/** Fetches every feed in parallel → [{ text } | { error }]. One unreachable host doesn't sink the others. */
+function icloudFetch_(urls) {
+  var request = function (url) {
+    return { url: url, muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'text/calendar' } };
+  };
+  var read = function (res) {
+    var code = res.getResponseCode();
+    if (code !== 200) return { error: 'HTTP ' + code };
+    var text = res.getContentText();
+    return text.indexOf('BEGIN:VCALENDAR') < 0 ? { error: 'not a calendar feed' } : { text: text };
+  };
+  try {
+    return UrlFetchApp.fetchAll(urls.map(request)).map(read);
+  } catch (err) {
+    return urls.map(function (url) {
+      try { return read(UrlFetchApp.fetch(url, request(url))); } catch (e) { return { error: 'could not connect' }; }
+    });
   }
-  return (a >>> 0).toString(36) + (b >>> 0).toString(36);
 }
 
-/** The minified feed, cached for ICLOUD_CACHE_SEC in chunks (CacheService values are capped at 100 KB). */
-function icloudFeed_(url) {
-  var cache = CacheService.getScriptCache();
-  var key = 'ics:' + hash_(url);
-  var n = Number(cache.get(key) || 0);
-  if (n > 0) {
-    var parts = [];
-    for (var i = 0; i < n && parts; i++) {
-      var part = cache.get(key + ':' + i);
-      if (part == null) parts = null;
-      else parts.push(part);
-    }
-    if (parts) return parts.join('');
-  }
-  var res = UrlFetchApp.fetch(url, { muteHttpExceptions: true, followRedirects: true, headers: { Accept: 'text/calendar' } });
-  var text = res.getResponseCode() === 200 ? res.getContentText() : '';
-  if (text.indexOf('BEGIN:VCALENDAR') < 0) throw new Error('iCloud feed ' + res.getResponseCode());
-  var min = icsMinify_(text);
-  var chunks = Math.ceil(min.length / ICS_CHUNK_CHARS);
-  if (chunks <= ICS_MAX_CHUNKS) {
-    try {
-      for (var j = 0; j < chunks; j++) cache.put(key + ':' + j, min.slice(j * ICS_CHUNK_CHARS, (j + 1) * ICS_CHUNK_CHARS), CONFIG.ICLOUD_CACHE_SEC);
-      cache.put(key, String(chunks), CONFIG.ICLOUD_CACHE_SEC);
-    } catch (err) { /* caching is an optimisation */ }
-  }
-  return min;
-}
-
-/** Busy blocks from every iCloud link. A link that fails is skipped and counted in `errors`. */
-function icloudBusy_(from, to) {
-  var list = icloudUrls_();
+/** Busy blocks in [from, to) read straight from the feeds, with per-calendar counts (never titles). */
+function icloudRead_(urls, from, to) {
   var busy = [];
-  var errors = list.bad;
-  list.urls.forEach(function (url) {
+  var calendars = icloudFetch_(urls).map(function (res) {
+    if (res.error) return { ok: false, error: res.error };
     try {
-      busy = busy.concat(icsBusy_(icloudFeed_(url), from, to));
+      var stats = {};
+      busy = busy.concat(icsBusy_(res.text, from, to, stats));
+      return { ok: true, events: stats.events };
     } catch (err) {
-      errors++;
+      return { ok: false, error: 'could not read it' };
     }
   });
-  return { busy: busy, errors: errors };
+  return {
+    busy: mergeIntervals_(busy),
+    calendars: calendars,
+    errors: calendars.filter(function (c) { return !c.ok; }).length,
+  };
+}
+
+/** Busy blocks as "startMinute+minutes" in base 36: ~10 characters each. Rounded outwards to whole minutes. */
+function encodeBusy_(busy) {
+  return busy.map(function (b) {
+    var a = Math.floor(b.start / MIN_MS);
+    return a.toString(36) + '+' + (Math.ceil(b.end / MIN_MS) - a).toString(36);
+  }).join(',');
+}
+
+function decodeBusy_(text) {
+  return text ? text.split(',').map(function (x) {
+    var p = x.split('+');
+    var a = parseInt(p[0], 36);
+    return { start: a * MIN_MS, end: (a + parseInt(p[1], 36)) * MIN_MS };
+  }) : [];
+}
+
+/**
+ * The last syncIcloud() result: { at, from, until, busy, errors }, or null.
+ * Stored as chunked Script Properties rather than a Drive file: reading them is fast on every availability
+ * request and needs no extra Drive permission, and a year of merged busy blocks is only tens of KB.
+ */
+function readSnapshot_() {
+  var all = PropertiesService.getScriptProperties().getProperties();
+  var meta;
+  try { meta = JSON.parse(all[ICLOUD_META] || 'null'); } catch (err) { meta = null; }
+  if (!meta) return null;
+  var parts = [];
+  for (var i = 0; i < meta.n; i++) {
+    var part = all['icloud_' + meta.gen + '_' + i];
+    if (part == null) return null; // a sync is swapping chunks right now
+    parts.push(part);
+  }
+  return { at: meta.at, from: meta.from, until: meta.until, busy: decodeBusy_(parts.join('')), errors: meta.errors };
+}
+
+function writeSnapshot_(snap) {
+  var props = PropertiesService.getScriptProperties();
+  var busy = snap.busy;
+  var until = snap.until;
+  var text = encodeBusy_(busy);
+  while (text.length > ICLOUD_MAX_CHARS && busy.length) {
+    until = busy[busy.length - 1].start;
+    busy = busy.slice(0, -1);
+    text = encodeBusy_(busy);
+  }
+  var gen = Date.now().toString(36);
+  var values = {};
+  var n = Math.ceil(text.length / ICLOUD_CHUNK_CHARS);
+  for (var i = 0; i < n; i++) values['icloud_' + gen + '_' + i] = text.slice(i * ICLOUD_CHUNK_CHARS, (i + 1) * ICLOUD_CHUNK_CHARS);
+  props.setProperties(values);
+  props.setProperty(ICLOUD_META, JSON.stringify({ at: snap.at, from: snap.from, until: until, gen: gen, n: n, errors: snap.errors }));
+  Object.keys(props.getProperties()).forEach(function (k) {
+    if (/^icloud_[a-z0-9]+_\d+$/.test(k) && k.indexOf('icloud_' + gen + '_') !== 0) props.deleteProperty(k);
+  });
+  return { busy: busy, until: until };
+}
+
+/**
+ * Daily job (see installDailySync): reads every ICLOUD_ICS_URLS feed, expands busy times from now to
+ * ICLOUD_SYNC_DAYS ahead and stores them (start/end only). A calendar that can't be read keeps the busy
+ * times from the previous snapshot, so a flaky fetch never opens up times that were blocked.
+ */
+function syncIcloud() {
+  var list = icloudUrls_();
+  var now = Date.now();
+  if (!list.urls.length) {
+    writeSnapshot_({ at: now, from: now, until: now, busy: [], errors: list.bad });
+    return { calendars: [], read: 0, events: 0, blocks: 0, errors: list.bad, syncedAt: now, until: now };
+  }
+  var until = now + CONFIG.ICLOUD_SYNC_DAYS * DAY_MS;
+  var res = icloudRead_(list.urls, now, until);
+  var busy = res.busy;
+  if (res.errors) {
+    var old = readSnapshot_();
+    if (old) busy = mergeIntervals_(busy.concat(old.busy.filter(function (b) { return b.end > now; })));
+  }
+  var saved = writeSnapshot_({ at: now, from: now, until: until, busy: busy, errors: res.errors + list.bad });
+  bumpAvailability_();
+  return {
+    calendars: res.calendars,
+    read: res.calendars.length - res.errors,
+    events: res.calendars.reduce(function (n, c) { return n + (c.events || 0); }, 0),
+    blocks: saved.busy.length,
+    errors: res.errors + list.bad,
+    syncedAt: now,
+    until: saved.until,
+  };
+}
+
+/** iCloud busy times for availability: the snapshot, plus a live read for anything past its horizon (or if none yet). */
+function icloudStored_(from, to) {
+  var list = icloudUrls_();
+  if (!list.urls.length) return { busy: [], errors: list.bad, syncedAt: null };
+  var snap = readSnapshot_();
+  if (!snap) {
+    var live = icloudRead_(list.urls, from, to);
+    return { busy: live.busy, errors: live.errors + list.bad, syncedAt: null };
+  }
+  var busy = snap.busy.filter(function (b) { return b.start < to && b.end > from; });
+  var errors = snap.errors;
+  if (to > snap.until) {
+    var later = icloudRead_(list.urls, Math.max(from, snap.until), to);
+    busy = busy.concat(later.busy);
+    errors = Math.max(errors, later.errors + list.bad);
+  }
+  return { busy: busy, errors: errors, syncedAt: snap.at };
+}
+
+/** iCloud busy times read fresh (so a same-day event can't be double-booked); unreadable feeds fall back to the snapshot. */
+function icloudLive_(from, to) {
+  var list = icloudUrls_();
+  if (!list.urls.length) return { busy: [], errors: list.bad, syncedAt: null };
+  var live = icloudRead_(list.urls, from, to);
+  var busy = live.busy;
+  var snap = live.errors ? readSnapshot_() : null;
+  if (snap) busy = busy.concat(snap.busy.filter(function (b) { return b.start < to && b.end > from; }));
+  return { busy: busy, errors: live.errors + list.bad, syncedAt: snap ? snap.at : null };
+}
+
+/** Creates the daily syncIcloud trigger (~ICLOUD_SYNC_HOUR in TIME_ZONE). Safe to run again: it replaces the old one. */
+function installDailySync() {
+  ScriptApp.getProjectTriggers().forEach(function (t) {
+    if (t.getHandlerFunction() === 'syncIcloud') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('syncIcloud').timeBased().everyDays(1).atHour(CONFIG.ICLOUD_SYNC_HOUR).inTimezone(CONFIG.TIME_ZONE).create();
+}
+
+/* ───────────────────────── one-time iCloud setup (run from the editor) ───────────────────────── */
+
+// Must be empty in the repo. Paste links between the brackets, run setIcloudUrls once, then empty it again and Save.
+const ICLOUD_URLS_TO_SAVE = [ /* paste links, run setIcloudUrls once, then empty again */ ];
+
+/**
+ * Saves ICLOUD_URLS_TO_SAVE into the ICLOUD_ICS_URLS script property, installs the daily sync, syncs once
+ * and logs a summary (counts only, no titles or links). Pick it in the toolbar and click Run.
+ */
+function setIcloudUrls(urls) {
+  var list = (Array.isArray(urls) ? urls : ICLOUD_URLS_TO_SAVE)
+    .map(function (u) { return String(u || '').trim(); })
+    .filter(Boolean);
+  if (!list.length) {
+    Logger.log('ICLOUD_URLS_TO_SAVE is empty. Paste your iCloud links into it, Save, then run setIcloudUrls again.');
+    return null;
+  }
+  PropertiesService.getScriptProperties().setProperty(CONFIG.ICLOUD_PROPERTY, list.join('\n'));
+  installDailySync();
+  var r = syncIcloud();
+  var lines = [
+    'Saved ' + list.length + ' iCloud link' + (list.length > 1 ? 's' : '') + ' in Script Properties (ICLOUD_ICS_URLS).',
+    'Daily sync is on (about ' + clockLabel_(CONFIG.ICLOUD_SYNC_HOUR * 60) + ' Toronto time).',
+    'Calendars read: ' + r.read + ' of ' + list.length + ' · events: ' + r.events + ' · busy blocks: ' + r.blocks + ' · errors: ' + r.errors,
+  ];
+  r.calendars.forEach(function (c, i) {
+    lines.push('  Calendar ' + (i + 1) + ': ' + (c.ok ? c.events + ' event' + (c.events === 1 ? '' : 's') : 'not read (' + c.error + ')'));
+  });
+  if (r.errors) lines.push('Fix or remove the links that were not read, then run setIcloudUrls again.');
+  lines.push('Now empty ICLOUD_URLS_TO_SAVE again and click Save.');
+  Logger.log(lines.join('\n'));
+  return r;
 }
 
 function ownerCalendar_() {

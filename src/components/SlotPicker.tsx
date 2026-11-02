@@ -1,12 +1,12 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { BriefcaseBusiness, CalendarHeart, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Loader2, Pencil, Plus, X } from 'lucide-react'
+import { BriefcaseBusiness, CalendarHeart, Check, ChevronDown, ChevronLeft, ChevronRight, Clock, Loader2, Pencil, Plus, Sunrise, X } from 'lucide-react'
 import { site } from '../data/content'
 import {
-  BOOKABLE_HOURS, DURATIONS_MIN, MAX_AHEAD_DAYS, MAX_DURATION_MIN, MAX_OPTIONS, WEEKDAY_HOURS, WEEKEND_HOURS, YIYI_TZ,
-  addMonths, buildSlots, clockLabel, compareMonths, dayKeyOf, dayLabel, describeSlot, durationLabel, fitsOnWeekdays, hoursOn,
-  isBookable, latestStartMin, localTz, minutesOfDay, monthDays, monthKey, monthOf, monthRange, overlaps, sameClock, timeLabel,
-  windowLabel, type Busy, type Month, type Slot, type SlotOption,
+  BOOKABLE_HOURS, DURATIONS_MIN, MAX_AHEAD_DAYS, MAX_DURATION_MIN, MAX_OPTIONS, WEEKDAY_HOURS, YIYI_TZ,
+  addMonths, buildSlots, clockLabel, compareMonths, dayKeyOf, dayLabel, describeSlot, durationLabel, fitsOnWeekdays,
+  latestStartMin, localTz, monthDays, monthKey, monthOf, monthRange, overlaps, refitSlots, sameClock, startsEarly,
+  timeLabel, windowFor, windowLabel, type Busy, type Month, type Slot, type SlotOption,
 } from '../lib/calendar'
 import { canSendDirectly, fetchAvailability } from '../lib/invite'
 
@@ -14,6 +14,10 @@ type Props = {
   value: Slot[]
   onChange: (slots: Slot[]) => void
   defaultDurationMin: number
+  /** Activity id (Tiny AI item or Connect option). Decides whether weekends open early (see EARLY_ACTIVITIES). */
+  activityId?: string
+  /** Shown when switching activity drops times, e.g. "Hike". */
+  activityName?: string
   /** Bump to refetch availability (e.g. after the relay says a slot was just taken). */
   refreshKey?: number
 }
@@ -24,17 +28,20 @@ const WEEKDAYS = ['S', 'M', 'T', 'W', 'T', 'F', 'S']
 const noon = (y: number, m: number, d: number) => new Date(Date.UTC(y, m - 1, d, 12))
 const sortSlots = (s: Slot[]) => [...s].sort((a, b) => a.start.getTime() - b.start.getTime())
 const sameStart = (a: Slot, b: Slot) => a.start.getTime() === b.start.getTime()
+const fitDuration = (min: number) => Math.min(MAX_DURATION_MIN, Math.max(30, Math.round(min / 30) * 30))
 
 /**
  * Folded by default. Opens to a month calendar where visitors pick up to MAX_OPTIONS start times.
  * Busy blocks from Yiyi's calendars and her work hours are greyed out (busy blocks never carry details).
  */
-export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0 }: Props) {
+export function SlotPicker({ value, onChange, defaultDurationMin, activityId, activityName, refreshKey = 0 }: Props) {
+  const early = startsEarly(activityId)
   const [now] = useState(() => new Date())
   const visitorTz = useMemo(localTz, [])
   const differs = !sameClock(visitorTz, YIYI_TZ, now)
   const [open, setOpen] = useState(false)
-  const [duration, setDuration] = useState(() => Math.min(MAX_DURATION_MIN, Math.max(30, Math.round(defaultDurationMin / 30) * 30)))
+  const [duration, setDuration] = useState(() => fitDuration(defaultDurationMin))
+  const [notice, setNotice] = useState('')
   const firstMonth = useMemo(() => monthOf(now), [now])
   const lastMonth = useMemo(() => monthOf(new Date(now.getTime() + MAX_AHEAD_DAYS * 86400e3)), [now])
   const [view, setView] = useState<Month>(firstMonth)
@@ -70,9 +77,9 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
   const days = useMemo(() => monthDays(view), [view])
   const slotsByDay = useMemo(() => {
     const m = new Map<string, SlotOption[]>()
-    for (const d of days) m.set(d.key, buildSlots(d, duration, now, busy).filter((s) => !s.past && s.start.getTime() <= horizon))
+    for (const d of days) m.set(d.key, buildSlots(d, duration, now, busy, early).filter((s) => !s.past && s.start.getTime() <= horizon))
     return m
-  }, [days, duration, now, busy, horizon])
+  }, [days, duration, now, busy, horizon, early])
 
   const isPicked = (s: Slot) => value.some((v) => sameStart(v, s))
   const clashes = (s: Slot) => value.some((v) => !sameStart(v, s) && overlaps(s.start.getTime(), s.end.getTime(), [{ start: v.start.getTime(), end: v.end.getTime() }]))
@@ -80,7 +87,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
   const todayKey = useMemo(() => dayKeyOf(now), [now])
   const dayStatus = (key: string, weekday: number) => {
     const slots = slotsByDay.get(key) ?? []
-    const w = BOOKABLE_HOURS[weekday]
+    const w = windowFor(weekday, early)
     if (!slots.length) return w.work && key >= todayKey && latestStartMin(duration, w) < w.startMin ? ('work' as const) : ('past' as const)
     if (slots.some((s) => isPicked(s))) return 'picked' as const
     return slots.some((s) => !s.busy && !clashes(s)) ? ('free' as const) : ('full' as const)
@@ -92,19 +99,27 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
 
   const changeDuration = (min: number) => {
     setDuration(min)
-    const kept: Slot[] = []
-    for (const v of sortSlots(value)) {
-      const s = { start: v.start, end: new Date(v.start.getTime() + min * 60e3) }
-      const ok = minutesOfDay(s.start) <= latestStartMin(min, hoursOn(s.start))
-        && isBookable(s.start.getTime(), s.end.getTime())
-        && !overlaps(s.start.getTime(), s.end.getTime(), knownBusy)
-        && !kept.some((k) => s.start.getTime() < k.end.getTime())
-      if (ok) kept.push(s)
-    }
-    onChange(kept)
+    setNotice('')
+    onChange(refitSlots(value, min, early, knownBusy))
   }
 
+  const lastActivity = useRef(activityId)
+  useEffect(() => {
+    if (lastActivity.current === activityId) return
+    lastActivity.current = activityId
+    const min = fitDuration(defaultDurationMin)
+    const kept = refitSlots(value, min, early, knownBusy)
+    const dropped = value.length - kept.length
+    setDuration(min)
+    setNotice(dropped
+      ? `${dropped === 1 ? "One of your times doesn't" : `${dropped} of your times don't`} fit ${activityName || 'this plan'}, so I took ${dropped === 1 ? 'it' : 'them'} off ♡`
+      : '')
+    if (value.length) onChange(kept)
+    // Only an activity switch should re-fit; value/duration changes are handled where they happen.
+  }, [activityId])
+
   const toggle = (s: SlotOption) => {
+    setNotice('')
     if (isPicked(s)) return onChange(value.filter((v) => !sameStart(v, s)))
     if (full) return
     onChange(sortSlots([...value, { start: s.start, end: s.end }]))
@@ -115,6 +130,12 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
     setView((v) => addMonths(v, n))
     setDayKey(null)
   }
+
+  const noticeLine = notice && (
+    <p className="flex items-start gap-1.5 rounded-xl bg-baby px-3 py-2 text-sm font-semibold text-berry" role="status" data-testid="slot-notice">
+      <CalendarHeart size={16} className="mt-0.5 shrink-0" /> {notice}
+    </p>
+  )
 
   const chips = value.length > 0 && (
     <ul className="flex flex-wrap gap-2" aria-label="Your proposed times">
@@ -135,6 +156,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
   if (!open) {
     return (
       <div className="max-w-3xl rounded-2xl border-2 border-ink bg-cream p-3" data-testid="slot-collapsed">
+        {noticeLine && <div className="mb-3">{noticeLine}</div>}
         {value.length === 0 ? (
           <button type="button" onClick={() => setOpen(true)} className="group flex w-full items-center gap-3 text-left" data-testid="open-picker" aria-expanded={false}>
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border-2 border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D] transition group-hover:-translate-y-0.5">
@@ -194,6 +216,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
         </div>
       </div>
 
+      {noticeLine && <div className="mt-3">{noticeLine}</div>}
       {chips && <div className="mt-3">{chips}</div>}
 
       <div className="mt-3 flex flex-wrap items-center gap-x-3 gap-y-1">
@@ -211,11 +234,11 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
       </div>
       {fitsOnWeekdays(duration) ? (
         <p className="mt-2 flex items-start gap-1.5 text-xs text-ink/60" data-testid="work-note">
-          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> Weekdays are work time until {clockLabel(WEEKDAY_HOURS.startMin)} (Toronto), so weekday plans fit {windowLabel(WEEKDAY_HOURS)}. Weekends are open {windowLabel(WEEKEND_HOURS)} ♡
+          <BriefcaseBusiness size={14} className="mt-px shrink-0 text-berry" /> Weekdays are work time until {clockLabel(WEEKDAY_HOURS.startMin)} (Toronto), so weekday plans fit {windowLabel(WEEKDAY_HOURS)}. Weekends are open {windowLabel(windowFor(6, early))} ♡
         </p>
       ) : (
         <p className="mt-2 flex items-start gap-1.5 rounded-xl bg-baby px-3 py-2 text-sm font-semibold" data-testid="work-note">
-          <BriefcaseBusiness size={16} className="mt-0.5 shrink-0 text-berry" /> Weekdays are work days for {site.name}, so big adventures live on weekends ({windowLabel(WEEKEND_HOURS)}) ♡
+          <BriefcaseBusiness size={16} className="mt-0.5 shrink-0 text-berry" /> Weekdays are work days for {site.name}, so big adventures live on weekends ({windowLabel(windowFor(6, early))}) ♡
         </p>
       )}
 
@@ -282,6 +305,12 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
                     <div data-work-block className="col-span-full flex items-center gap-2 rounded-xl border-2 border-dashed border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold text-ink/45">
                       <BriefcaseBusiness size={14} className="shrink-0" />
                       Until {clockLabel(BOOKABLE_HOURS[selectedDay.weekday].startMin)} · work hours
+                    </div>
+                  )}
+                  {!early && BOOKABLE_HOURS[selectedDay.weekday].earlyStartMin != null && (
+                    <div data-early-block className="col-span-full flex items-center gap-2 rounded-xl border-2 border-dashed border-ink/20 bg-ink/5 px-3 py-1.5 text-xs font-semibold text-ink/45">
+                      <Sunrise size={14} className="shrink-0" />
+                      Before {clockLabel(BOOKABLE_HOURS[selectedDay.weekday].startMin)} · early starts are for runs, hikes & snowboarding
                     </div>
                   )}
                   {daySlots.map((s) => (

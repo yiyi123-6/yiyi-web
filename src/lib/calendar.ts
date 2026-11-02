@@ -9,21 +9,31 @@ export const MAX_DURATION_MIN = 12 * 60
 /** How far ahead visitors can propose plans (the relay enforces the same cap). */
 export const MAX_AHEAD_DAYS = 730
 export const MAX_OPTIONS = 5
-export type Window = { startMin: number; endMin: number; work?: boolean }
+export type Window = { startMin: number; endMin: number; work?: boolean; earlyStartMin?: number }
 /**
  * When plans can happen, in Yiyi's time, by weekday (0 = Sunday … 6 = Saturday), in minutes after midnight.
  * A plan has to start and end inside its day's window. `work` days are work time until the window opens.
- * Keep in sync with CONFIG.BOOKABLE_HOURS in scripts/invite-relay.gs.
+ * `earlyStartMin` replaces `startMin` for EARLY_ACTIVITIES.
+ * Keep both in sync with CONFIG.BOOKABLE_HOURS / CONFIG.EARLY_ACTIVITIES in scripts/invite-relay.gs.
  */
 export const BOOKABLE_HOURS: Window[] = [
-  { startMin: 9 * 60, endMin: 22 * 60 }, // Sun
+  { startMin: 9 * 60, endMin: 22 * 60, earlyStartMin: 6 * 60 }, // Sun
   { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Mon
   { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Tue
   { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Wed
   { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Thu
   { startMin: 19 * 60, endMin: 22 * 60, work: true }, // Fri
-  { startMin: 9 * 60, endMin: 22 * 60 }, // Sat
+  { startMin: 9 * 60, endMin: 22 * 60, earlyStartMin: 6 * 60 }, // Sat
 ]
+/** Activity ids (Tiny AI items and Connect options) that may use `earlyStartMin`: runs, hikes, snowboarding. */
+export const EARLY_ACTIVITIES = ['run', 'morning-run', 'trail-run', 'hike', 'all-day-hike', 'summit', 'snowboard']
+export const startsEarly = (activityId?: string) => !!activityId && EARLY_ACTIVITIES.includes(activityId)
+
+/** A day's window for an activity that does (or doesn't) start early. */
+export function windowFor(weekday: number, early = false): Window {
+  const w = BOOKABLE_HOURS[weekday]
+  return early && w.earlyStartMin != null ? { ...w, startMin: w.earlyStartMin } : w
+}
 export const WEEKDAY_HOURS = BOOKABLE_HOURS[1]
 export const WEEKEND_HOURS = BOOKABLE_HOURS[6]
 export const DURATIONS_MIN = [30, 60, 90, 120, 180, 240, 300, 360, 480, 540, 600, 720]
@@ -101,17 +111,17 @@ export function monthRange({ y, m }: Month, tz = YIYI_TZ) {
 const DAY_MS = 86400e3
 
 /** The bookable window of the day `date` falls on, in Yiyi's time. */
-export function hoursOn(date: Date, tz = YIYI_TZ) {
+export function hoursOn(date: Date, early = false, tz = YIYI_TZ) {
   const p = zonedParts(date, tz)
-  return BOOKABLE_HOURS[new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay()]
+  return windowFor(new Date(Date.UTC(p.y, p.m - 1, p.d)).getUTCDay(), early)
 }
 
 /** True if [start, end) starts and ends inside the bookable window of the day it starts on. */
-export function isBookable(start: number, end: number, tz = YIYI_TZ) {
+export function isBookable(start: number, end: number, early = false, tz = YIYI_TZ) {
   const a = start + tzOffsetMs(new Date(start), tz)
   const b = end + tzOffsetMs(new Date(end), tz)
   const day = Math.floor(a / DAY_MS) * DAY_MS
-  const w = BOOKABLE_HOURS[new Date(day).getUTCDay()]
+  const w = windowFor(new Date(day).getUTCDay(), early)
   return a >= day + w.startMin * 60e3 && b <= day + w.endMin * 60e3
 }
 
@@ -137,14 +147,14 @@ export const windowLabel = (w: Window) => `${clockLabel(w.startMin)}–${clockLa
 
 export type SlotOption = Slot & { minutes: number; past: boolean; busy: boolean }
 
-export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[] = [], tz = YIYI_TZ): SlotOption[] {
+export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[] = [], early = false, tz = YIYI_TZ): SlotOption[] {
   const out: SlotOption[] = []
   const lead = now.getTime() + LEAD_MIN * 60e3
-  const w = BOOKABLE_HOURS[day.weekday]
+  const w = windowFor(day.weekday, early)
   for (let min = w.startMin; min <= latestStartMin(durationMin, w); min += STEP_MIN) {
     const start = zonedToUtc(day.y, day.m, day.d, min, tz)
     const end = new Date(start.getTime() + durationMin * 60e3)
-    if (!isBookable(start.getTime(), end.getTime(), tz)) continue
+    if (!isBookable(start.getTime(), end.getTime(), early, tz)) continue
     out.push({
       start, end, minutes: min,
       past: start.getTime() < lead,
@@ -152,6 +162,20 @@ export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[
     })
   }
   return out
+}
+
+/** Picked starts re-timed to `min` minutes, keeping only those that still fit the rules, the busy blocks and each other. */
+export function refitSlots(value: Slot[], min: number, early: boolean, busy: Busy[] = []) {
+  const kept: Slot[] = []
+  for (const v of [...value].sort((a, b) => a.start.getTime() - b.start.getTime())) {
+    const s = { start: v.start, end: new Date(v.start.getTime() + min * 60e3) }
+    const ok = minutesOfDay(s.start) <= latestStartMin(min, hoursOn(s.start, early))
+      && isBookable(s.start.getTime(), s.end.getTime(), early)
+      && !overlaps(s.start.getTime(), s.end.getTime(), busy)
+      && !kept.some((k) => s.start.getTime() < k.end.getTime())
+    if (ok) kept.push(s)
+  }
+  return kept
 }
 
 /** "2026-11-07" for the day `date` falls on in `tz`. */
