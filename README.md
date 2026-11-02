@@ -71,16 +71,18 @@ You shouldn't need to touch any component to personalise the site.
 
 ## Invites + calendar
 
-The Tiny AI's **Invite Yiyi ♡** button and the Connect page have a date & time picker. Visitors pick a day (next 6 weeks) and a start time (6:00–22:00 Toronto time, 30-minute steps; plans of 5+ hours only start in the morning). The duration defaults to the activity (e.g. 9 hrs for the all-day hike, 1.5 hrs for a lifting session) and visitors can change it. Times are shown in your time (Toronto) and in the visitor's own time when it's different.
+The Tiny AI's **Invite Yiyi ♡** button and the Connect page have a date & time picker. It starts folded up as a **Pick a date & time** button (on Connect it's marked optional). Opening it shows a month calendar with ‹ › arrows, so visitors can go to any month from now up to two years ahead. They pick a day, then a start time (6:00–22:00 Toronto time, 30-minute steps; plans of 5+ hours only start in the morning). After each pick it folds back into a chip, and they can **add another time**, up to 5 options with one shared duration. Yiyi accepts the one that works. The duration defaults to the activity (e.g. 9 hrs for the all-day hike, 1.5 hrs for a lifting session) and visitors can change it. Times are shown in your time (Toronto) and in the visitor's own time when it's different.
+
+**Work hours are never bookable:** Monday–Friday 9:00–19:00 Toronto time. Any slot that touches that window shows as "work hours", and the relay rejects it too. Weekday mornings before 9, evenings after 7 and weekends stay open. Plans longer than 3 hours can't fit around work, so the picker says weekdays are work days and big adventures live on weekends. The rule is `WORK_HOURS` in `src/lib/calendar.ts` and `CONFIG.WORK_HOURS` in `scripts/invite-relay.gs`. Change both together.
 
 Everything goes through your own Google Apps Script relay, `scripts/invite-relay.gs`. It runs as **yiyitan076@gmail.com**, is free, and doesn't need a server.
 
 **How a booking works**
 
-1. The picker asks the relay for busy times from **both** calendars (yiyitan076@gmail.com and ee.official67@gmail.com) and greys those slots out.
-2. The visitor sends the request. The relay checks both calendars again; if the slot was just taken, the visitor is asked to pick another time.
-3. A pink **"♡ Request: <activity> with <name>"** hold goes on your yiyitan076 calendar, and you get an email with the time plus **Accept** and **Decline** buttons. The visitor is not invited yet.
-4. **Accept** sends the visitor a real Google Calendar invite from you (the hold becomes "♡ <activity> with <name>"). **Decline** removes the hold and emails them a kind "that time doesn't work" note from your Gmail. Each link opens a confirmation page first, so nothing happens until you click the button there, and each link works once.
+1. When a visitor opens the picker, it asks the relay for busy times from **both** calendars (yiyitan076@gmail.com and ee.official67@gmail.com) for the month they're looking at, and greys those slots out. One query covers at most 62 days.
+2. The visitor sends 1–5 proposed times. The relay checks every time again (future, ≤ 12 hours, outside work hours, not overlapping each other, not busy on either calendar). If one was just taken, the visitor is asked to replace it.
+3. Each time gets a pink **"♡ Request (option N/M): <activity> with <name>"** hold on your yiyitan076 calendar (just "♡ Request: …" when there's one time). You get **one** email listing every option, each with its own **Accept this time** button, plus one **Decline all**. The visitor is not invited yet.
+4. **Accept this time** sends the visitor a real Google Calendar invite from you for that time (titled "♡ <activity> with <name>") and removes all the holds. **Decline all** removes every hold and emails them a kind "those times don't work" note from your Gmail. Each link opens a confirmation page first, so nothing happens until you click the button there. Once you've accepted or declined, all of that request's links stop working.
 
 **Setup (once)**
 
@@ -96,7 +98,7 @@ To check it works, open `<your /exec URL>?action=availability` in a browser. You
 
 **Privacy.** The public availability endpoint only ever returns busy start/end times, merged across both calendars. Event titles, descriptions, guests and locations are never sent to the website. There are no keys or secrets in the site's code: the relay runs inside your Google account, and Accept/Decline links use one-time random tokens stored in the script's properties. The honeypot field and the 30-invites-per-hour limit are still in place.
 
-**Before the relay is set up** (`inviteScriptUrl: ''`), the picker still works without live busy times. Sending opens the visitor's email app with the exact date and time (both time zones) already written, and they also get **Add to Google Calendar** and **.ics** buttons that add yiyitan076@gmail.com as a guest, so you receive a real calendar invite you can accept. If the relay is ever unreachable, the form shows a "send it from your email app" link.
+**Before the relay is set up** (`inviteScriptUrl: ''`), the picker still works without live busy times. Sending opens the visitor's email app with every proposed time (in both time zones) already written. They also get a **Google Calendar** and an **.ics** button for each time that add yiyitan076@gmail.com as a guest, so you receive real calendar invites and accept the one that works. If the relay is ever unreachable, the form shows a "send it from your email app" link.
 
 Relay tests (runs the script's logic in Node with fake Google services): `npm run test:invite`.
 
