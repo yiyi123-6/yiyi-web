@@ -10,17 +10,16 @@ export type Invite = {
   source: string
   /** Used for the calendar hold title, e.g. "All-day mountain hike". */
   activity?: string
-  /** ISO instants. With these, the relay checks Yiyi's calendars and puts a hold on hers. */
-  start?: string
-  end?: string
+  /** Proposed times (ISO instants, up to 5). The relay checks Yiyi's calendars and holds each one on hers. */
+  slots?: { start: string; end: string }[]
   /** The visitor's IANA time zone, so the email shows their time too. */
   timeZone?: string
 }
 
-type Reply = { success?: string | boolean; message?: string; code?: string }
+type Reply = { success?: string | boolean; message?: string; code?: string; conflicts?: string[] }
 
 export class InviteError extends Error {
-  constructor(message: string, readonly code?: string) {
+  constructor(message: string, readonly code?: string, readonly conflicts: string[] = []) {
     super(message)
   }
 }
@@ -37,7 +36,7 @@ export async function sendInvite(invite: Invite): Promise<void> {
   // No custom headers: keeps this a "simple" CORS request, which Apps Script requires.
   const res = await fetch(links.inviteScriptUrl, { method: 'POST', body: JSON.stringify(invite) })
   const data = (await res.json().catch(() => ({}))) as Reply
-  if (!res.ok || String(data.success) !== 'true') throw new InviteError(data.message || `Invite failed (${res.status})`, data.code)
+  if (!res.ok || String(data.success) !== 'true') throw new InviteError(data.message || `Invite failed (${res.status})`, data.code, data.conflicts)
 }
 
 export type Availability = { busy: Busy[]; calendarsMissing: string[] }

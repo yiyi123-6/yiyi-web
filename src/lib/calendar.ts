@@ -7,8 +7,16 @@ export const MORNING_ONLY_FROM_MIN = 5 * 60
 export const LATEST_MORNING_START_MIN = 10 * 60
 export const STEP_MIN = 30
 export const LEAD_MIN = 2 * 60
-export const BOOKING_DAYS = 42
 export const MAX_DURATION_MIN = 12 * 60
+/** How far ahead visitors can propose plans (the relay enforces the same cap). */
+export const MAX_AHEAD_DAYS = 730
+export const MAX_OPTIONS = 5
+/**
+ * Never bookable, in Yiyi's time. Days: 0 = Sunday … 6 = Saturday. Minutes after midnight.
+ * Keep in sync with CONFIG.WORK_HOURS in scripts/invite-relay.gs.
+ */
+export const WORK_HOURS = { days: [1, 2, 3, 4, 5], startMin: 9 * 60, endMin: 19 * 60 }
+export const WORK_HOURS_LABEL = 'Mon–Fri 9 AM–7 PM'
 export const DURATIONS_MIN = [30, 60, 90, 120, 180, 240, 300, 360, 480, 540, 600, 720]
 
 export type Busy = { start: number; end: number }
@@ -37,6 +45,12 @@ export function tzOffsetMs(date: Date, tz: string) {
   return Date.UTC(p.y, p.m - 1, p.d, p.h, p.mi, p.s) - Math.floor(date.getTime() / 1000) * 1000
 }
 
+/** Minutes after midnight on the wall clock in `tz`. */
+export function minutesOfDay(date: Date, tz = YIYI_TZ) {
+  const p = zonedParts(date, tz)
+  return p.h * 60 + p.mi
+}
+
 /** Wall-clock time in `tz` → the real instant. */
 export function zonedToUtc(y: number, m: number, d: number, minutes: number, tz: string) {
   const guess = Date.UTC(y, m - 1, d, 0, minutes)
@@ -44,14 +58,53 @@ export function zonedToUtc(y: number, m: number, d: number, minutes: number, tz:
   return new Date(guess - tzOffsetMs(new Date(first), tz))
 }
 
-/** The next `count` calendar days in `tz`, starting today. */
-export function buildDays(now: Date, tz = YIYI_TZ, count = BOOKING_DAYS): Day[] {
-  const t = zonedParts(now, tz)
+export type Month = { y: number; m: number }
+
+export const monthKey = ({ y, m }: Month) => `${y}-${String(m).padStart(2, '0')}`
+
+export function monthOf(date: Date, tz = YIYI_TZ): Month {
+  const p = zonedParts(date, tz)
+  return { y: p.y, m: p.m }
+}
+
+export function addMonths({ y, m }: Month, n: number): Month {
+  const i = y * 12 + (m - 1) + n
+  return { y: Math.floor(i / 12), m: (i % 12) + 1 }
+}
+
+export const compareMonths = (a: Month, b: Month) => a.y * 12 + a.m - (b.y * 12 + b.m)
+
+/** Every day of a month. */
+export function monthDays({ y, m }: Month): Day[] {
+  const count = new Date(Date.UTC(y, m, 0)).getUTCDate()
   return Array.from({ length: count }, (_, i) => {
-    const u = new Date(Date.UTC(t.y, t.m - 1, t.d + i))
-    const y = u.getUTCFullYear(), m = u.getUTCMonth() + 1, d = u.getUTCDate()
-    return { key: `${y}-${String(m).padStart(2, '0')}-${String(d).padStart(2, '0')}`, y, m, d, weekday: u.getUTCDay() }
+    const d = i + 1
+    return { key: `${monthKey({ y, m })}-${String(d).padStart(2, '0')}`, y, m, d, weekday: new Date(Date.UTC(y, m - 1, d)).getUTCDay() }
   })
+}
+
+/** The instants a month starts and ends in `tz`. */
+export function monthRange({ y, m }: Month, tz = YIYI_TZ) {
+  const next = addMonths({ y, m }, 1)
+  return { from: zonedToUtc(y, m, 1, 0, tz), to: zonedToUtc(next.y, next.m, 1, 0, tz) }
+}
+
+const DAY_MS = 86400e3
+
+/** True if [start, end) touches the work-hours window on any day it spans. */
+export function overlapsWorkHours(start: number, end: number, tz = YIYI_TZ) {
+  const a = start + tzOffsetMs(new Date(start), tz)
+  const b = end + tzOffsetMs(new Date(end), tz)
+  for (let day = Math.floor(a / DAY_MS) * DAY_MS; day < b; day += DAY_MS) {
+    if (!WORK_HOURS.days.includes(new Date(day).getUTCDay())) continue
+    if (a < day + WORK_HOURS.endMin * 60e3 && b > day + WORK_HOURS.startMin * 60e3) return true
+  }
+  return false
+}
+
+/** Whether a plan this long fits before or after work on a weekday. */
+export function fitsOnWeekdays(durationMin: number) {
+  return DAY_START_MIN + durationMin <= WORK_HOURS.startMin || WORK_HOURS.endMin <= latestStartMin(durationMin)
 }
 
 /** Long plans (5h+) only start in the morning; everything ends by 22:00 Toronto time. */
@@ -60,7 +113,7 @@ export function latestStartMin(durationMin: number) {
   return Math.min(cap, DAY_END_MIN - durationMin)
 }
 
-export type SlotOption = Slot & { minutes: number; past: boolean; busy: boolean }
+export type SlotOption = Slot & { minutes: number; past: boolean; busy: boolean; work: boolean }
 
 export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[] = [], tz = YIYI_TZ): SlotOption[] {
   const out: SlotOption[] = []
@@ -68,7 +121,12 @@ export function buildSlots(day: Day, durationMin: number, now: Date, busy: Busy[
   for (let min = DAY_START_MIN; min <= latestStartMin(durationMin); min += STEP_MIN) {
     const start = zonedToUtc(day.y, day.m, day.d, min, tz)
     const end = new Date(start.getTime() + durationMin * 60e3)
-    out.push({ start, end, minutes: min, past: start.getTime() < lead, busy: overlaps(start.getTime(), end.getTime(), busy) })
+    out.push({
+      start, end, minutes: min,
+      past: start.getTime() < lead,
+      busy: overlaps(start.getTime(), end.getTime(), busy),
+      work: overlapsWorkHours(start.getTime(), end.getTime(), tz),
+    })
   }
   return out
 }
@@ -99,10 +157,12 @@ function zoneName(date: Date, tz: string) {
   return new Intl.DateTimeFormat('en-US', { timeZone: tz, timeZoneName: 'short' }).formatToParts(date).find((p) => p.type === 'timeZoneName')?.value ?? tz
 }
 
-/** "Sat, Nov 14 · 9:00 AM – 6:00 PM EST" (adds the end day when it spills over midnight). */
-export function describeSlot(slot: Slot, tz: string) {
+/** "Sat, Nov 14 · 9:00 AM – 6:00 PM EST" (adds the year when it isn't this year, and the end day when it spills over midnight). */
+export function describeSlot(slot: Slot, tz: string, now = new Date()) {
+  const opts: Intl.DateTimeFormatOptions = { weekday: 'short', month: 'short', day: 'numeric' }
+  if (zonedParts(slot.start, tz).y !== zonedParts(now, tz).y) opts.year = 'numeric'
   const sameDay = dayLabel(slot.start, tz) === dayLabel(slot.end, tz)
-  return `${dayLabel(slot.start, tz)} · ${timeLabel(slot.start, tz)} – ${sameDay ? '' : `${dayLabel(slot.end, tz)}, `}${timeLabel(slot.end, tz)} ${zoneName(slot.end, tz)}`
+  return `${dayLabel(slot.start, tz, opts)} · ${timeLabel(slot.start, tz)} – ${sameDay ? '' : `${dayLabel(slot.end, tz)}, `}${timeLabel(slot.end, tz)} ${zoneName(slot.end, tz)}`
 }
 
 /** "20261114T140000Z" */
@@ -139,9 +199,13 @@ export function icsFor({ title, details, slot, guest }: CalendarEvent, now = new
 }
 
 /** Lines for an email body: Yiyi's time, plus the visitor's when it differs. */
-export function whenLines(slot: Slot, visitorTz: string) {
-  const lines = [`📅 When: ${describeSlot(slot, YIYI_TZ)} (Yiyi's time, Toronto)`]
-  if (!sameClock(visitorTz, YIYI_TZ, slot.start)) lines.push(`   = ${describeSlot(slot, visitorTz)} (my time, ${visitorTz})`)
-  lines.push(`⏱️ Duration: ${durationLabel(Math.round((slot.end.getTime() - slot.start.getTime()) / 60e3))}`)
-  return lines.join('\n')
+export function whenLines(slots: Slot[], visitorTz: string) {
+  const one = (slot: Slot, indent: string) => {
+    const lines = [`${describeSlot(slot, YIYI_TZ)} (Yiyi's time, Toronto)`]
+    if (!sameClock(visitorTz, YIYI_TZ, slot.start)) lines.push(`${indent}= ${describeSlot(slot, visitorTz)} (my time, ${visitorTz})`)
+    return lines.join('\n')
+  }
+  const duration = `⏱️ Duration: ${durationLabel(Math.round((slots[0].end.getTime() - slots[0].start.getTime()) / 60e3))}`
+  if (slots.length === 1) return `📅 When: ${one(slots[0], '   ')}\n${duration}`
+  return [`📅 Times that work for me (pick one):`, ...slots.map((s, i) => `${i + 1}. ${one(s, '   ')}`), duration].join('\n')
 }
