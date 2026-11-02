@@ -133,7 +133,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
 
   if (!open) {
     return (
-      <div className="rounded-2xl border-2 border-ink bg-cream p-3" data-testid="slot-collapsed">
+      <div className="max-w-3xl rounded-2xl border-2 border-ink bg-cream p-3" data-testid="slot-collapsed">
         {value.length === 0 ? (
           <button type="button" onClick={() => setOpen(true)} className="group flex w-full items-center gap-3 text-left" data-testid="open-picker" aria-expanded={false}>
             <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border-2 border-ink bg-hot text-cream shadow-[2px_2px_0_0_#21151D] transition group-hover:-translate-y-0.5">
@@ -175,7 +175,7 @@ export function SlotPicker({ value, onChange, defaultDurationMin, refreshKey = 0
   const pad = days[0].weekday
 
   return (
-    <div className="rounded-2xl border-2 border-ink bg-cream p-4" data-testid="slot-picker">
+    <div className="max-w-3xl rounded-2xl border-2 border-ink bg-cream p-4" data-testid="slot-picker">
       <div className="flex flex-wrap items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="flex items-center gap-2 font-display text-xl font-black">
