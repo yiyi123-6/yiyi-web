@@ -27,7 +27,7 @@ export const links = {
   /**
    * Your Google Apps Script web-app URL (see scripts/invite-relay.gs). Invites are then sent
    * from your Gmail to your Gmail, and the date picker greys out busy times from your calendars.
-   * While '' the form opens the visitor's email app instead (with the picked time + calendar links).
+   * While '' visitors can fill in the form and pick times, and see "Booking opens soon" instead of a send button.
    */
   inviteScriptUrl: '',
   linkedin: 'https://www.linkedin.com/in/yiyitan',
