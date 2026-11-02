@@ -26,7 +26,7 @@ var CONFIG = {
    * Never bookable, in TIME_ZONE. Days: 0 = Sunday … 6 = Saturday. Minutes after midnight.
    * Keep in sync with WORK_HOURS in src/lib/calendar.ts.
    */
-  WORK_HOURS: { DAYS: [1, 2, 3, 4, 5], START_MIN: 9 * 60, END_MIN: 19 * 60 },
+  WORK_HOURS: { DAYS: [1, 2, 3, 4, 5], START_MIN: 6 * 60, END_MIN: 19 * 60 },
   /** Longest range one availability query may cover (about one month view). */
   MAX_QUERY_DAYS: 62,
   /** How far ahead plans can be requested. */
@@ -149,7 +149,7 @@ function validateRequest_(d, nowMs) {
     if (end - start > CONFIG.MAX_DURATION_MIN * MIN_MS) return bad('Plans can be up to 12 hours.');
     if (start < nowMs + CONFIG.MIN_LEAD_MIN * MIN_MS) return bad('Pick a time a little further in the future.');
     if (start > nowMs + CONFIG.MAX_AHEAD_DAYS * DAY_MS) return bad('That is a bit too far ahead. Pick something in the next two years.');
-    if (overlapsWorkHours_(start, end)) return { ok: false, code: 'work', message: 'Weekdays 9 AM–7 PM (Toronto) are work hours. Pick a morning, evening or weekend?' };
+    if (overlapsWorkHours_(start, end)) return { ok: false, code: 'work', message: 'Weekdays 6 AM–7 PM (Toronto) are work hours. Pick a weekday evening or a weekend?' };
     slots.push({ start: start, end: end });
   }
   slots.sort(function (a, b) { return a.start - b.start; });
